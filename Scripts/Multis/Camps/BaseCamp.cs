@@ -1,335 +1,423 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+
 using Server.Items;
 using Server.Mobiles;
+using Server.Spells;
 
 namespace Server.Multis
 {
-    public abstract class BaseCamp : BaseMulti
-    {
-        public static void Initialize()
-        {
-            Timer.DelayCall(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), OnTick);
-        }
+	public abstract class BaseCamp : BaseMulti
+	{
+		public static List<BaseCamp> Camps { get; } = new List<BaseCamp>();
 
-        public static List<BaseCamp> _Camps = new List<BaseCamp>();
+		public static void Initialize()
+		{
+			Timer.DelayCall(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), ProcessCamps);
+		}
 
-        private List<Item> m_Items;
-        private List<Mobile> m_Mobiles;
+		public static void ProcessCamps()
+		{
+			var index = Camps.Count;
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public DateTime TimeOfDecay { get; set; }
+			while (--index >= 0)
+			{
+				if (index >= Camps.Count)
+				{
+					continue;
+				}
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public BaseCreature Prisoner { get; set; }
+				var c = Camps[index];
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public BaseContainer Treasure1 { get; set; }
+				if (c?.Deleted != false)
+				{
+					Camps.RemoveAt(index);
+					continue;
+				}
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public BaseContainer Treasure2 { get; set; }
+				c.CheckPrisoner();
+				c.CheckDecay();
+			}
+		}
 
-        public override bool HandlesOnMovement
-        {
-            get { return true; }
-        }
+		private List<Item> m_Items;
+		private List<Mobile> m_Mobiles;
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public virtual TimeSpan DecayDelay { get { return TimeSpan.FromMinutes(30.0); } }
+		[CommandProperty(AccessLevel.GameMaster)]
+		public DateTime TimeOfDecay { get; set; }
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public bool Decaying { get { return TimeOfDecay != DateTime.MinValue; } }
+		[CommandProperty(AccessLevel.GameMaster)]
+		public BaseCreature Prisoner { get; set; }
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public bool ForceDecay
-        {
-            get { return false; }
-            set { SetDecayTime(); }
-        }
+		[CommandProperty(AccessLevel.GameMaster)]
+		public BaseContainer Treasure1 { get; set; }
 
-        [CommandProperty(AccessLevel.GameMaster)]
-        public bool RestrictDecay { get; set; }
+		[CommandProperty(AccessLevel.GameMaster)]
+		public BaseContainer Treasure2 { get; set; }
 
-        public BaseCamp(int multiID)
-            : base(multiID)
-        {
-            m_Items = new List<Item>();
-            m_Mobiles = new List<Mobile>();
+		[CommandProperty(AccessLevel.GameMaster)]
+		public virtual TimeSpan DecayDelay => TimeSpan.FromMinutes(30.0);
 
-            Visible = false;
+		[CommandProperty(AccessLevel.GameMaster)]
+		public bool Decaying => TimeOfDecay > DateTime.MinValue;
 
-            CheckAddComponents();
-            _Camps.Add(this);
-        }
+		[CommandProperty(AccessLevel.GameMaster)]
+		public bool ForceDecay { get => false; set => SetDecayTime(); }
 
-        public BaseCamp(Serial serial)
-            : base(serial)
-        {
-        }
+		[CommandProperty(AccessLevel.GameMaster)]
+		public bool RestrictDecay { get; set; }
 
-        public virtual int EventRange
-        {
-            get
-            {
-                return 10;
-            }
-        }
+		public override bool HandlesOnMovement => true;
 
-        public void CheckAddComponents()
-        {
-            if (Deleted)
-                return;
+		public virtual int EventRange => 10;
 
-            AddComponents();
-        }
+		public BaseCamp(int multiID)
+			: base(multiID)
+		{
+			m_Items = new List<Item>();
+			m_Mobiles = new List<Mobile>();
 
-        public virtual void AddComponents()
-        {
-        }
+			Visible = false;
 
-        public virtual void CheckDecay()
-        {
-            if (RestrictDecay)
-                return;
+			CheckAddComponents();
 
-            if (!Decaying)
-            {
-                if (((Treasure1 == null || Treasure1.Items.Count == 0) && (Treasure2 == null || Treasure2.Items.Count == 0)) ||
-                    (Prisoner != null && (Prisoner.Deleted || !Prisoner.CantWalk)))
-                {
-                    SetDecayTime();
-                }
-            }
-            else if(TimeOfDecay < DateTime.UtcNow)
-            {
-                Delete();
-            }
-        }
+			Camps.Add(this);
+		}
 
-        public virtual void SetDecayTime()
-        {
-            if (Deleted || RestrictDecay)
-                return;
+		public BaseCamp(Serial serial)
+			: base(serial)
+		{
+			Camps.Add(this);
+		}
 
-            TimeOfDecay = DateTime.UtcNow + DecayDelay;
-        }
+		public void CheckAddComponents()
+		{
+			if (!Deleted)
+			{
+				AddComponents();
+			}
+		}
 
-        public virtual void AddItem(Item item, int xOffset, int yOffset, int zOffset)
-        {
-            if (Map == null)
-                return;
+		public virtual void AddComponents()
+		{
+		}
 
-            m_Items.Add(item);
+		public virtual void CheckDecay()
+		{
+			if (RestrictDecay)
+			{
+				return;
+			}
 
-            int zavg = this.Map.GetAverageZ(X + xOffset, Y + yOffset);
+			if (!Decaying)
+			{
+				if (Treasure1?.Deleted == false && Treasure1.Items.Count > 0)
+				{
+					return;
+				}
 
-            if (!Map.CanFit(X + xOffset, Y + yOffset, zavg, item.ItemData.Height))
-            {
-                for (int z = 1; z <= 39; z++)
-                {
-                    if (Map.CanFit(X + xOffset, Y + yOffset, zavg + z, item.ItemData.Height))
-                    {
-                        zavg += z;
-                        break;
-                    }
-                }
-            }
+				if (Treasure2?.Deleted == false && Treasure2.Items.Count > 0)
+				{
+					return;
+				}
 
-            item.MoveToWorld(new Point3D(X + xOffset, Y + yOffset, zavg + zOffset), Map);
-        }
+				if (Prisoner?.Deleted == false && Prisoner.CantWalk)
+				{
+					return;
+				}
 
-        public virtual void AddMobile(Mobile m, int xOffset, int yOffset, int zOffset)
-        {
-            if (Map == null)
-                return;
+				SetDecayTime();
+			}
+			else if (DateTime.UtcNow >= TimeOfDecay)
+			{
+				Delete();
+			}
+		}
 
-            if(!m_Mobiles.Contains(m))
-                m_Mobiles.Add(m);
+		public virtual void SetDecayTime()
+		{
+			if (!Deleted && !RestrictDecay)
+			{
+				TimeOfDecay = DateTime.UtcNow + DecayDelay;
+			}
+		}
 
-            int zavg = Map.GetAverageZ(X + xOffset, Y + yOffset);
+		public virtual void AddItem(Item item, int xOffset, int yOffset, int zOffset)
+		{
+			if (Map == null || item?.Deleted != false)
+			{
+				return;
+			}
 
-            if (!Map.CanSpawnMobile(X + xOffset, Y + yOffset, zavg))
-            {
-                for (int z = 1; z <= 39; z++)
-                {
-                    if (Map.CanSpawnMobile(X + xOffset, Y + yOffset, zavg + z))
-                    {
-                        zavg += z;
-                        break;
-                    }
-                }
-            }
+			if (!m_Items.Contains(item))
+			{
+				m_Items.Add(item);
+			}
 
-            m.MoveToWorld(new Point3D(X + xOffset, Y + yOffset, zavg + zOffset), Map);
-            SetCreature(m as BaseCreature);
-        }
+			var zavg = Map.GetAverageZ(X + xOffset, Y + yOffset);
 
-        private void SetCreature(BaseCreature bc)
-        {
-            if (bc != null)
-            {
-                //int zavg = Map.GetAverageZ(bc.X, bc.Y);
-                IPoint3D p = bc.Location; //new Point3D(bc.X, bc.Y, zavg);
+			if (!Map.CanFit(X + xOffset, Y + yOffset, zavg, item.ItemData.Height))
+			{
+				for (var z = 1; z <= 39; z++)
+				{
+					if (Map.CanFit(X + xOffset, Y + yOffset, zavg + z, item.ItemData.Height))
+					{
+						zavg += z;
+						break;
+					}
+				}
+			}
 
-                Server.Spells.SpellHelper.GetSurfaceTop(ref p);
+			item.MoveToWorld(new Point3D(X + xOffset, Y + yOffset, zavg + zOffset), Map);
+		}
 
-                Point3D loc = new Point3D(p);
-                bc.RangeHome = bc.IsPrisoner ? 0 : 6;
-                bc.Home = loc;
+		public virtual void AddMobile(Mobile m, int xOffset, int yOffset, int zOffset)
+		{
+			if (Map == null || m?.Deleted != false)
+			{
+				return;
+			}
 
-                if (bc.Location != loc)
-                    bc.Location = loc;
+			if (!m_Mobiles.Contains(m))
+			{
+				m_Mobiles.Add(m);
+			}
 
-                if (bc is BaseVendor || bc is Banker)
-                    bc.Direction = Direction.South;
-            }
-        }
+			var zavg = Map.GetAverageZ(X + xOffset, Y + yOffset);
 
-        public virtual void OnEnter(Mobile m)
-        {
-        }
+			if (!Map.CanSpawnMobile(X + xOffset, Y + yOffset, zavg))
+			{
+				for (var z = 1; z <= 39; z++)
+				{
+					if (Map.CanSpawnMobile(X + xOffset, Y + yOffset, zavg + z))
+					{
+						zavg += z;
+						break;
+					}
+				}
+			}
 
-        public virtual void OnExit(Mobile m)
-        {
-        }
+			m.MoveToWorld(new Point3D(X + xOffset, Y + yOffset, zavg + zOffset), Map);
 
-        public override void OnLocationChange(Point3D old)
-        {
-            foreach (var item in m_Items)
-            {
-                item.Location = new Point3D(X + (item.X - old.X), Y + (item.Y - old.Y), Z + (item.Z - old.Z));
-            }
+			SetCreature(m as BaseCreature);
+		}
 
-            foreach (var m in m_Mobiles)
-            {
-                m.Location = new Point3D(X + (m.X - old.X), Y + (m.Y - old.Y), Z + (m.Z - old.Z));
-                SetCreature(m as BaseCreature);
-            }
-        }
+		private void SetCreature(BaseCreature bc)
+		{
+			if (bc?.Deleted == false)
+			{
+				IPoint3D p = bc.Location;
 
-        public override void OnMapChange()
-        {
-            foreach (var item in m_Items)
-            {
-                item.Map = Map;
-            }
+				SpellHelper.GetSurfaceTop(ref p);
 
-            foreach (var m in m_Mobiles)
-            {
-                m.Map = Map;
-            }
-        }
+				var loc = new Point3D(p);
 
-        public override void OnMovement(Mobile m, Point3D oldLocation)
-        {
-            bool inOldRange = Utility.InRange(oldLocation, Location, EventRange);
-            bool inNewRange = Utility.InRange(m.Location, Location, EventRange);
+				bc.RangeHome = bc.IsPrisoner ? 0 : 6;
+				bc.Home = loc;
 
-            if (inNewRange && !inOldRange)
-                OnEnter(m);
-            else if (inOldRange && !inNewRange)
-                OnExit(m);
-        }
+				if (bc.Location != loc)
+				{
+					bc.Location = loc;
+				}
 
-        public override void OnAfterDelete()
-        {
-            base.OnAfterDelete();
+				if (bc is BaseVendor || bc is Banker)
+				{
+					bc.Direction = Direction.South;
+				}
+			}
+		}
 
-            for (int i = 0; i < m_Items.Count; ++i)
-                m_Items[i].Delete();
+		public virtual void OnEnter(Mobile m)
+		{
+		}
 
-            for (int i = 0; i < m_Mobiles.Count; ++i)
-            {
-                BaseCreature bc = (BaseCreature)m_Mobiles[i];
+		public virtual void OnExit(Mobile m)
+		{
+		}
 
-                if (!bc.IsPrisoner)
-                    m_Mobiles[i].Delete();
-                else if (m_Mobiles[i].CantWalk)
-                    m_Mobiles[i].Delete();
-            }
+		public override void OnLocationChange(Point3D old)
+		{
+			base.OnLocationChange(old);
 
-            m_Items.Clear();
-            m_Mobiles.Clear();
-            _Camps.Remove(this);
-        }
+			for (var i = m_Items.Count - 1; i >= 0; i--)
+			{
+				if (i < m_Items.Count && m_Items[i]?.Deleted == false)
+				{
+					var item = m_Items[i];
+
+					item.Location = new Point3D(X + (item.X - old.X), Y + (item.Y - old.Y), Z + (item.Z - old.Z));
+				}
+			}
+
+			for (var i = m_Mobiles.Count - 1; i >= 0; i--)
+			{
+				if (i < m_Mobiles.Count && m_Mobiles[i]?.Deleted == false)
+				{
+					var m = m_Mobiles[i];
+
+					m.Location = new Point3D(X + (m.X - old.X), Y + (m.Y - old.Y), Z + (m.Z - old.Z));
+
+					SetCreature(m as BaseCreature);
+				}
+			}
+		}
+
+		public override void OnMapChange()
+		{
+			base.OnMapChange();
+
+			for (var i = m_Items.Count - 1; i >= 0; i--)
+			{
+				if (i < m_Items.Count && m_Items[i]?.Deleted == false)
+				{
+					m_Items[i].Map = Map;
+				}
+			}
+
+			for (var i = m_Mobiles.Count - 1; i >= 0; i--)
+			{
+				if (i < m_Mobiles.Count && m_Mobiles[i]?.Deleted == false)
+				{
+					m_Mobiles[i].Map = Map;
+				}
+			}
+		}
+
+		public override void OnMovement(Mobile m, Point3D oldLocation)
+		{
+			base.OnMovement(m, oldLocation);
+
+			var inOldRange = Utility.InRange(oldLocation, Location, EventRange);
+			var inNewRange = Utility.InRange(m.Location, Location, EventRange);
+
+			if (inNewRange && !inOldRange)
+			{
+				OnEnter(m);
+			}
+			else if (inOldRange && !inNewRange)
+			{
+				OnExit(m);
+			}
+		}
+
+		public override void OnDelete()
+		{
+			for (var i = m_Items.Count - 1; i >= 0; i--)
+			{
+				if (i < m_Items.Count && m_Items[i]?.Deleted == false)
+				{
+					m_Items[i].Delete();
+				}
+			}
+
+			for (var i = m_Mobiles.Count - 1; i >= 0; i--)
+			{
+				if (i < m_Mobiles.Count && m_Mobiles[i]?.Deleted == false)
+				{
+					if (m_Mobiles[i] != Prisoner || m_Mobiles[i].CantWalk)
+					{
+						m_Mobiles[i].Delete();
+					}
+				}
+			}
+
+			base.OnDelete();
+		}
+
+		public override void OnAfterDelete()
+		{
+			base.OnAfterDelete();
+
+			m_Items.Clear();
+			m_Mobiles.Clear();
+
+			Camps.Remove(this);
+		}
 
 		protected virtual void AddCampChests()
 		{
-			Treasure1 = new TreasureLevel1();
-            ((TreasureLevel1)Treasure1).Locked = false;
-            AddItem(Treasure1, 2, 2, 0);
+			AddItem(Treasure1 = new TreasureLevel1()
+			{
+				Locked = false
+			}, 2, 2, 0);
 
-            Treasure2 = new TreasureLevel3();
-            AddItem(Treasure2, -2, -2, 0);
+			AddItem(Treasure2 = new TreasureLevel3(), -2, -2, 0);
+		}
+
+		public void CheckPrisoner()
+		{
+			if (Prisoner?.Deleted == false && Prisoner.CantWalk)
+			{
+				if (m_Mobiles.Count == 0 || m_Mobiles.All(m => m == null || m.Deleted || m == Prisoner || !m.Alive))
+				{
+					Prisoner.CantWalk = false;
+					Prisoner.CanMove = true;
+					Prisoner.Frozen = false;
+
+					Prisoner.BeginDeleteTimer();
+				}
+			}
 		}
 
 		public override void Serialize(GenericWriter writer)
-        {
-            base.Serialize(writer);
+		{
+			base.Serialize(writer);
 
-            writer.Write((int)2); // version
+			writer.Write(2); // version
 
-            writer.Write(Prisoner);
-            writer.Write(Treasure1);
-            writer.Write(Treasure2);
+			writer.Write(Prisoner);
+			writer.Write(Treasure1);
+			writer.Write(Treasure2);
 
-            writer.Write(m_Items, true);
-            writer.Write(m_Mobiles, true);
-            writer.WriteDeltaTime(TimeOfDecay);
-        }
+			writer.Write(m_Items, true);
+			writer.Write(m_Mobiles, true);
 
-        public override void Deserialize(GenericReader reader)
-        {
-            base.Deserialize(reader);
+			writer.WriteDeltaTime(TimeOfDecay);
+		}
 
-            int version = reader.ReadInt();
+		public override void Deserialize(GenericReader reader)
+		{
+			base.Deserialize(reader);
 
-            switch ( version )
-            {
-                case 2:
-                    {
-                        Prisoner = reader.ReadMobile() as BaseCreature;
-                        Treasure1 = reader.ReadItem() as BaseContainer;
-                        Treasure2 = reader.ReadItem() as BaseContainer;
+			var version = reader.ReadInt();
 
-                        goto case 0;
-                    }
-                case 1:
-                case 0:
-                    {
-                        m_Items = reader.ReadStrongItemList();
-                        m_Mobiles = reader.ReadStrongMobileList();
-                        TimeOfDecay = reader.ReadDeltaTime();
+			switch (version)
+			{
+				case 2:
+				{
+					Prisoner = reader.ReadMobile<BaseCreature>();
+					Treasure1 = reader.ReadItem<BaseContainer>();
+					Treasure2 = reader.ReadItem<BaseContainer>();
 
-                        break;
-                    }
-            }
+					goto case 1;
+				}
+				case 1:
+				case 0:
+				{
+					m_Items = reader.ReadStrongItemList();
+					m_Mobiles = reader.ReadStrongMobileList();
 
-            if (version == 0 && ItemID == 0x10EE)
-            {
-                ItemID = 0x1F6D;
-            }
+					TimeOfDecay = reader.ReadDeltaTime();
 
-            if (version == 1)
-                Delete();
+					break;
+				}
+			}
 
-            if (Prisoner != null)
-                Prisoner.IsPrisoner = true;
+			if (version == 0 && ItemID == 0x10EE)
+			{
+				ItemID = 0x1F6D;
+			}
 
-            _Camps.Add(this);
-        }
+			if (Prisoner?.Deleted == false)
+			{
+				Prisoner.IsPrisoner = true;
+			}
 
-        public static void OnTick()
-        {
-            List<BaseCamp> list = new List<BaseCamp>(_Camps);
-
-            list.ForEach(c =>
-                {
-                    if (!c.Deleted && c.Map != null && c.Map != Map.Internal && !c.RestrictDecay)
-                        c.CheckDecay();
-                });
-
-            ColUtility.Free(list);
-        }
-    }
+			if (version < 2)
+			{
+				Delete();
+			}
+		}
+	}
 }

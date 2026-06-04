@@ -1,66 +1,53 @@
-using System;
-using Server;
-using System.Collections.Generic;
-using Server.Mobiles;
-using Server.Items;
-using Server.Factions;
 using Server.Engines.VvV;
+using System.Collections.Generic;
 
 namespace Server.Items
 {
     [TypeAlias("Server.Engines.VvV.MorphEarrings")]
     public class MorphEarrings : GoldEarrings
-	{
-        public override int LabelNumber
-        {
-            get
-            {
-                return 1094746; // Morph Earrings
-            }
-        }
+    {
+        public override int LabelNumber => 1094746; // Morph Earrings
 
         [Constructable]
         public MorphEarrings()
         {
         }
 
-        public override void OnRemoved(object parent)
-        {
+        public override void OnRemoved(IEntity parent)
+		{
             base.OnRemoved(parent);
 
-            if (parent is Mobile)
+            if (parent is Mobile m)
             {
-                ValidateEquipment((Mobile)parent);
+                ValidateEquipment(m);
             }
         }
 
         private void ValidateEquipment(Mobile m)
         {
-            if (m == null)
+            if (m == null || !m.Player)
                 return;
 
             Race race = m.Race;
             bool didDrop = false;
 
-            List<Item> list = new List<Item>(m.Items);
+            List<Item> list = m.Items;
 
-            foreach (Item item in list)
-            {
-                bool drop = false;
+			int index = list.Count;
 
-                if (item is BaseArmor && ((BaseArmor)item).RequiredRace != null && ((BaseArmor)item).RequiredRace != race)
-                    drop = true;
-                else if (item is BaseWeapon && ((BaseWeapon)item).RequiredRace != null && ((BaseWeapon)item).RequiredRace != race)
-                    drop = true;
-                else if (item is BaseJewel && ((BaseJewel)item).RequiredRace != null && ((BaseJewel)item).RequiredRace != race)
-                    drop = true;
-                else if (item is BaseClothing && ((BaseClothing)item).RequiredRace != null && ((BaseClothing)item).RequiredRace != race)
-                    drop = true;
+            while(--index >= 0)
+			{
+				if (index >= list.Count)
+					continue;
 
-                if (drop)
+				Item item = list[index];
+
+                if (!race.ValidateEquipment(m, item, false))
                 {
                     if (!didDrop)
+                    {
                         didDrop = true;
+                    }
 
                     if (m.Backpack == null || !m.Backpack.TryDropItem(m, item, false))
                     {
@@ -69,30 +56,30 @@ namespace Server.Items
                 }
             }
 
-            ColUtility.Free(list);
-
             if (didDrop)
+            {
                 m.SendLocalizedMessage(500647); // Some equipment has been moved to your backpack.
+            }
         }
 
         public MorphEarrings(Serial serial)
             : base(serial)
-		{
-		}
-		
-		public override void Serialize(GenericWriter writer)
-		{
-			base.Serialize(writer);
-			writer.Write(1);
-		}
-		
-		public override void Deserialize(GenericReader reader)
-		{
-			base.Deserialize(reader);
-			int version = reader.ReadInt();
+        {
+        }
+
+        public override void Serialize(GenericWriter writer)
+        {
+            base.Serialize(writer);
+            writer.Write(1);
+        }
+
+        public override void Deserialize(GenericReader reader)
+        {
+            base.Deserialize(reader);
+            int version = reader.ReadInt();
 
             if (version == 0 && ViceVsVirtueSystem.Enabled)
                 Timer.DelayCall(() => ViceVsVirtueSystem.Instance.AddVvVItem(this));
-		}
-	}
+        }
+    }
 }

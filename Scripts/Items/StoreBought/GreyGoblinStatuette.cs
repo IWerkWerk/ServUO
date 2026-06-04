@@ -1,6 +1,3 @@
-using System;
-using Server.Gumps;
-
 namespace Server.Items
 {
     public class GreyGoblinStatuette : MonsterStatuette
@@ -102,8 +99,8 @@ namespace Server.Items
             base.OnItemRemoved(item);
         }
 
-        public override void OnRemoved(object parent)
-        {
+        public override void OnRemoved(IEntity parent)
+		{
             if (TurnedOn)
             {
                 TurnOff();
@@ -121,7 +118,7 @@ namespace Server.Items
         {
             base.Serialize(writer);
 
-            writer.Write((int)1);
+            writer.Write(1);
             writer.Write(User);
         }
 

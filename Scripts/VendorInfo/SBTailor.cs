@@ -1,40 +1,24 @@
-using System;
-using System.Collections.Generic;
 using Server.Items;
+using System.Collections.Generic;
 
 namespace Server.Mobiles
 {
     public class SBTailor : SBInfo
     {
-        private readonly List<GenericBuyInfo> m_BuyInfo = new InternalBuyInfo();
+        private readonly List<IBuyItemInfo> m_BuyInfo = new InternalBuyInfo();
         private readonly IShopSellInfo m_SellInfo = new InternalSellInfo();
-        public SBTailor()
-        {
-        }
 
-        public override IShopSellInfo SellInfo
-        {
-            get
-            {
-                return m_SellInfo;
-            }
-        }
-        public override List<GenericBuyInfo> BuyInfo
-        {
-            get
-            {
-                return m_BuyInfo;
-            }
-        }
+        public override IShopSellInfo SellInfo => m_SellInfo;
+        public override List<IBuyItemInfo> BuyInfo => m_BuyInfo;
 
-        public class InternalBuyInfo : List<GenericBuyInfo>
+        public class InternalBuyInfo : List<IBuyItemInfo>
         {
             public InternalBuyInfo()
             {
-                Add(new GenericBuyInfo(typeof(SewingKit), 3, 20, 0xF9D, 0)); 
+                Add(new GenericBuyInfo(typeof(SewingKit), 3, 20, 0xF9D, 0));
                 Add(new GenericBuyInfo(typeof(Scissors), 11, 20, 0xF9F, 0));
-                Add(new GenericBuyInfo(typeof(DyeTub), 8, 20, 0xFAB, 0)); 
-                Add(new GenericBuyInfo(typeof(Dyes), 8, 20, 0xFA9, 0)); 
+                Add(new GenericBuyInfo(typeof(DyeTub), 8, 20, 0xFAB, 0));
+                Add(new GenericBuyInfo(typeof(Dyes), 8, 20, 0xFA9, 0));
 
                 Add(new GenericBuyInfo(typeof(Shirt), 12, 20, 0x1517, 0));
                 Add(new GenericBuyInfo(typeof(ShortPants), 7, 20, 0x152E, 0));

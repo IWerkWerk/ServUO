@@ -13,37 +13,33 @@ namespace Server.Diagnostics
 		{
 			var list = new List<T>(profiles);
 
-			list.Sort(delegate(T a, T b) { return -a.TotalTime.CompareTo(b.TotalTime); });
+			list.Sort((a, b) => -a.TotalTime.CompareTo(b.TotalTime));
 
-			foreach (T prof in list)
+			foreach (var prof in list)
 			{
 				prof.WriteTo(op);
 				op.WriteLine();
 			}
 		}
 
-		private readonly string _name;
-
-		private long _count;
-
 		private TimeSpan _totalTime;
 		private TimeSpan _peakTime;
 
 		private readonly Stopwatch _stopwatch;
 
-		public string Name { get { return _name; } }
+		public string Name { get; }
 
-		public long Count { get { return _count; } }
+		public long Count { get; private set; }
 
-		public TimeSpan AverageTime { get { return TimeSpan.FromTicks(_totalTime.Ticks / Math.Max(1, _count)); } }
+		public TimeSpan AverageTime => TimeSpan.FromTicks(_totalTime.Ticks / Math.Max(1, Count));
 
-		public TimeSpan PeakTime { get { return _peakTime; } }
+		public TimeSpan PeakTime => _peakTime;
 
-		public TimeSpan TotalTime { get { return _totalTime; } }
+		public TimeSpan TotalTime => _totalTime;
 
 		protected BaseProfile(string name)
 		{
-			_name = name;
+			Name = name;
 
 			_stopwatch = new Stopwatch();
 		}
@@ -60,7 +56,7 @@ namespace Server.Diagnostics
 
 		public virtual void Finish()
 		{
-			TimeSpan elapsed = _stopwatch.Elapsed;
+			var elapsed = _stopwatch.Elapsed;
 
 			_totalTime += elapsed;
 
@@ -69,7 +65,7 @@ namespace Server.Diagnostics
 				_peakTime = elapsed;
 			}
 
-			_count++;
+			Count++;
 
 			_stopwatch.Reset();
 		}

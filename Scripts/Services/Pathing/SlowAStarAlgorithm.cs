@@ -1,281 +1,282 @@
+#region References
 using System;
-using Server.Mobiles;
+
 using CalcMoves = Server.Movement.Movement;
 using MoveImpl = Server.Movement.MovementImpl;
+#endregion
 
 namespace Server.PathAlgorithms.SlowAStar
 {
-    public struct PathNode
-    {
-        public int x, y, z;
-        public int g, h;
-        public int px, py, pz;
-        public int dir;
-    }
+	public struct PathNode
+	{
+		public int x, y, z;
+		public int g, h;
+		public int px, py, pz;
+		public int dir;
+	}
 
-    public class SlowAStarAlgorithm : PathAlgorithm
-    {
-        public static PathAlgorithm Instance = new SlowAStarAlgorithm();
-        private static readonly PathNode[] m_Closed = new PathNode[MaxNodes];
-        private static readonly PathNode[] m_Open = new PathNode[MaxNodes];
-        private static readonly PathNode[] m_Successors = new PathNode[8];
-        private static readonly Direction[] m_Path = new Direction[MaxNodes];
-        private const int MaxDepth = 300;
-        private const int MaxNodes = MaxDepth * 16;
-        private Point3D m_Goal;
-        public int Heuristic(int x, int y, int z)
-        {
-            x -= this.m_Goal.X;
-            y -= this.m_Goal.Y;
-            z -= this.m_Goal.Z;
+	public class SlowAStarAlgorithm : PathAlgorithm
+	{
+		public static PathAlgorithm Instance = new SlowAStarAlgorithm();
 
-            x *= 11;
-            y *= 11;
+		private static readonly PathNode[] m_Closed = new PathNode[MaxNodes];
+		private static readonly PathNode[] m_Open = new PathNode[MaxNodes];
+		private static readonly PathNode[] m_Successors = new PathNode[8];
 
-            return (x * x) + (y * y) + (z * z);
-        }
+		private static readonly Direction[] m_Path = new Direction[MaxNodes];
 
-        public override bool CheckCondition(IPoint3D p, Map map, Point3D start, Point3D goal)
-        {
-            return false;
-        }
+		private const int MaxDepth = 300;
+		private const int MaxNodes = MaxDepth * 16;
 
-        public override Direction[] Find(IPoint3D p, Map map, Point3D start, Point3D goal)
-        {
-            this.m_Goal = goal;
+		private Point3D m_Goal;
 
-            BaseCreature bc = p as BaseCreature;
+		public int Heuristic(int x, int y, int z)
+		{
+			x -= m_Goal.X;
+			y -= m_Goal.Y;
+			z -= m_Goal.Z;
 
-            PathNode curNode;
+			x *= 11;
+			y *= 11;
 
-            PathNode goalNode = new PathNode();
-            goalNode.x = goal.X;
-            goalNode.y = goal.Y;
-            goalNode.z = goal.Z;
+			return (x * x) + (y * y) + (z * z);
+		}
 
-            PathNode startNode = new PathNode();
-            startNode.x = start.X;
-            startNode.y = start.Y;
-            startNode.z = start.Z;
-            startNode.h = this.Heuristic(startNode.x, startNode.y, startNode.z);
+		public override bool CheckCondition(IPoint3D p, Map map, Point3D start, Point3D goal)
+		{
+			return false;
+		}
 
-            PathNode[] closed = m_Closed, open = m_Open, successors = m_Successors;
-            Direction[] path = m_Path;
+		public override Direction[] Find(IPoint3D p, Map map, Point3D start, Point3D goal)
+		{
+			m_Goal = goal;
 
-            int closedCount = 0, openCount = 0, sucCount = 0, pathCount = 0;
-            int popIndex, curF;
-            int x, y, z;
-            int depth = 0;
+			PathNode curNode;
 
-            int xBacktrack, yBacktrack, zBacktrack, iBacktrack = 0;
+			var goalNode = new PathNode
+			{
+				x = goal.X,
+				y = goal.Y,
+				z = goal.Z
+			};
 
-            open[openCount++] = startNode;
+			var startNode = new PathNode
+			{
+				x = start.X,
+				y = start.Y,
+				z = start.Z
+			};
+			startNode.h = Heuristic(startNode.x, startNode.y, startNode.z);
 
-            while (openCount > 0)
-            {
-                curNode = open[0];
-                curF = curNode.g + curNode.h;
-                popIndex = 0;
+			PathNode[] closed = m_Closed, open = m_Open, successors = m_Successors;
+			var path = m_Path;
 
-                for (int i = 1; i < openCount; ++i)
-                {
-                    if ((open[i].g + open[i].h) < curF)
-                    {
-                        curNode = open[i];
-                        curF = curNode.g + curNode.h;
-                        popIndex = i;
-                    }
-                }
+			int closedCount = 0, openCount = 0, pathCount = 0, sucCount;
+			int popIndex, curF;
+			int x, y, z;
+			var depth = 0;
 
-                if (curNode.x == goalNode.x && curNode.y == goalNode.y && Math.Abs(curNode.z - goalNode.z) < 16)
-                {
-                    if (closedCount == MaxNodes)
-                        break;
+			int xBacktrack, yBacktrack, zBacktrack, iBacktrack = 0;
 
-                    closed[closedCount++] = curNode;
+			open[openCount++] = startNode;
 
-                    xBacktrack = curNode.px;
-                    yBacktrack = curNode.py;
-                    zBacktrack = curNode.pz;
+			while (openCount > 0)
+			{
+				curNode = open[0];
+				curF = curNode.g + curNode.h;
+				popIndex = 0;
 
-                    if (pathCount == MaxNodes)
-                        break;
+				for (var i = 1; i < openCount; ++i)
+				{
+					if ((open[i].g + open[i].h) < curF)
+					{
+						curNode = open[i];
+						curF = curNode.g + curNode.h;
+						popIndex = i;
+					}
+				}
 
-                    path[pathCount++] = (Direction)curNode.dir;
+				if (curNode.x == goalNode.x && curNode.y == goalNode.y && Math.Abs(curNode.z - goalNode.z) < 16)
+				{
+					if (closedCount == MaxNodes)
+						break;
 
-                    while (xBacktrack != startNode.x || yBacktrack != startNode.y || zBacktrack != startNode.z)
-                    {
-                        bool found = false;
+					closed[closedCount++] = curNode;
 
-                        for (int j = 0; !found && j < closedCount; ++j)
-                        {
-                            if (closed[j].x == xBacktrack && closed[j].y == yBacktrack && closed[j].z == zBacktrack)
-                            {
-                                if (pathCount == MaxNodes)
-                                    break;
+					xBacktrack = curNode.px;
+					yBacktrack = curNode.py;
+					zBacktrack = curNode.pz;
 
-                                curNode = closed[j];
-                                path[pathCount++] = (Direction)curNode.dir;
-                                xBacktrack = curNode.px;
-                                yBacktrack = curNode.py;
-                                zBacktrack = curNode.pz;
-                                found = true;
-                            }
-                        }
+					if (pathCount == MaxNodes)
+						break;
 
-                        if (!found)
-                        {
-                            Console.WriteLine("bugaboo..");
-                            return null;
-                        }
+					path[pathCount++] = (Direction)curNode.dir;
 
-                        if (pathCount == MaxNodes)
-                            break;
-                    }
+					while (xBacktrack != startNode.x || yBacktrack != startNode.y || zBacktrack != startNode.z)
+					{
+						var found = false;
 
-                    if (pathCount == MaxNodes)
-                        break;
+						for (var j = 0; !found && j < closedCount; ++j)
+						{
+							if (closed[j].x == xBacktrack && closed[j].y == yBacktrack && closed[j].z == zBacktrack)
+							{
+								if (pathCount == MaxNodes)
+									break;
 
-                    Direction[] dirs = new Direction[pathCount];
+								curNode = closed[j];
+								path[pathCount++] = (Direction)curNode.dir;
+								xBacktrack = curNode.px;
+								yBacktrack = curNode.py;
+								zBacktrack = curNode.pz;
+								found = true;
+							}
+						}
 
-                    while (pathCount > 0)
-                        dirs[iBacktrack++] = path[--pathCount];
+						if (!found)
+						{
+							Console.WriteLine("bugaboo..");
+							return null;
+						}
 
-                    return dirs;
-                }
+						if (pathCount == MaxNodes)
+							break;
+					}
 
-                --openCount;
+					if (pathCount == MaxNodes)
+						break;
 
-                for (int i = popIndex; i < openCount; ++i)
-                    open[i] = open[i + 1];
+					var dirs = new Direction[pathCount];
 
-                sucCount = 0;
+					while (pathCount > 0)
+						dirs[iBacktrack++] = path[--pathCount];
 
-                if (bc != null)
-                {
-                    MoveImpl.AlwaysIgnoreDoors = bc.CanOpenDoors;
-                    MoveImpl.IgnoreMovableImpassables = bc.CanMoveOverObstacles;
-                }
+					return dirs;
+				}
 
-                MoveImpl.Goal = goal;
+				--openCount;
 
-                for (int i = 0; i < 8; ++i)
-                {
-                    switch ( i )
-                    {
-                        default:
-                        case 0:
-                            x = 0;
-                            y = -1;
-                            break;
-                        case 1:
-                            x = 1;
-                            y = -1;
-                            break;
-                        case 2:
-                            x = 1;
-                            y = 0;
-                            break;
-                        case 3:
-                            x = 1;
-                            y = 1;
-                            break;
-                        case 4:
-                            x = 0;
-                            y = 1;
-                            break;
-                        case 5:
-                            x = -1;
-                            y = 1;
-                            break;
-                        case 6:
-                            x = -1;
-                            y = 0;
-                            break;
-                        case 7:
-                            x = -1;
-                            y = -1;
-                            break;
-                    }
+				for (var i = popIndex; i < openCount; ++i)
+					open[i] = open[i + 1];
 
-                    if (CalcMoves.CheckMovement(p, map, new Point3D(curNode.x, curNode.y, curNode.z), (Direction)i, out z))
-                    {
-                        successors[sucCount].x = x + curNode.x;
-                        successors[sucCount].y = y + curNode.y;
-                        successors[sucCount++].z = z;
-                    }
-                }
+				sucCount = 0;
 
-                MoveImpl.AlwaysIgnoreDoors = false;
-                MoveImpl.IgnoreMovableImpassables = false;
-                MoveImpl.Goal = Point3D.Zero;
+				MoveImpl.Goal = goal;
 
-                if (sucCount == 0 || ++depth > MaxDepth)
-                    break;
+				for (var i = 0; i < 8; ++i)
+				{
+					switch (i)
+					{
+						default:
+						case 0:
+							x = 0;
+							y = -1;
+							break;
+						case 1:
+							x = 1;
+							y = -1;
+							break;
+						case 2:
+							x = 1;
+							y = 0;
+							break;
+						case 3:
+							x = 1;
+							y = 1;
+							break;
+						case 4:
+							x = 0;
+							y = 1;
+							break;
+						case 5:
+							x = -1;
+							y = 1;
+							break;
+						case 6:
+							x = -1;
+							y = 0;
+							break;
+						case 7:
+							x = -1;
+							y = -1;
+							break;
+					}
 
-                for (int i = 0; i < sucCount; ++i)
-                {
-                    x = successors[i].x;
-                    y = successors[i].y;
-                    z = successors[i].z;
+					if (CalcMoves.CheckMovement(p, map, new Point3D(curNode.x, curNode.y, curNode.z), (Direction)i, out z))
+					{
+						successors[sucCount].x = x + curNode.x;
+						successors[sucCount].y = y + curNode.y;
+						successors[sucCount++].z = z;
+					}
+				}
 
-                    successors[i].g = curNode.g + 1;
+				MoveImpl.Goal = Point3D.Zero;
 
-                    int openIndex = -1, closedIndex = -1;
+				if (sucCount == 0 || ++depth > MaxDepth)
+					break;
 
-                    for (int j = 0; openIndex == -1 && j < openCount; ++j)
-                    {
-                        if (open[j].x == x && open[j].y == y && open[j].z == z)
-                            openIndex = j;
-                    }
+				for (var i = 0; i < sucCount; ++i)
+				{
+					x = successors[i].x;
+					y = successors[i].y;
+					z = successors[i].z;
 
-                    if (openIndex >= 0 && open[openIndex].g < successors[i].g)
-                        continue;
+					successors[i].g = curNode.g + 1;
 
-                    for (int j = 0; closedIndex == -1 && j < closedCount; ++j)
-                    {
-                        if (closed[j].x == x && closed[j].y == y && closed[j].z == z)
-                            closedIndex = j;
-                    }
+					int openIndex = -1, closedIndex = -1;
 
-                    if (closedIndex >= 0 && closed[closedIndex].g < successors[i].g)
-                        continue;
+					for (var j = 0; openIndex == -1 && j < openCount; ++j)
+					{
+						if (open[j].x == x && open[j].y == y && open[j].z == z)
+							openIndex = j;
+					}
 
-                    if (openIndex >= 0)
-                    {
-                        --openCount;
+					if (openIndex >= 0 && open[openIndex].g < successors[i].g)
+						continue;
 
-                        for (int j = openIndex; j < openCount; ++j)
-                            open[j] = open[j + 1];
-                    }
+					for (var j = 0; closedIndex == -1 && j < closedCount; ++j)
+					{
+						if (closed[j].x == x && closed[j].y == y && closed[j].z == z)
+							closedIndex = j;
+					}
 
-                    if (closedIndex >= 0)
-                    {
-                        --closedCount;
+					if (closedIndex >= 0 && closed[closedIndex].g < successors[i].g)
+						continue;
 
-                        for (int j = closedIndex; j < closedCount; ++j)
-                            closed[j] = closed[j + 1];
-                    }
+					if (openIndex >= 0)
+					{
+						--openCount;
 
-                    successors[i].px = curNode.x;
-                    successors[i].py = curNode.y;
-                    successors[i].pz = curNode.z;
-                    successors[i].dir = (int)this.GetDirection(curNode.x, curNode.y, x, y);
-                    successors[i].h = this.Heuristic(x, y, z);
+						for (var j = openIndex; j < openCount; ++j)
+							open[j] = open[j + 1];
+					}
 
-                    if (openCount == MaxNodes)
-                        break;
+					if (closedIndex >= 0)
+					{
+						--closedCount;
 
-                    open[openCount++] = successors[i];
-                }
+						for (var j = closedIndex; j < closedCount; ++j)
+							closed[j] = closed[j + 1];
+					}
 
-                if (openCount == MaxNodes || closedCount == MaxNodes)
-                    break;
+					successors[i].px = curNode.x;
+					successors[i].py = curNode.y;
+					successors[i].pz = curNode.z;
+					successors[i].dir = (int)GetDirection(curNode.x, curNode.y, x, y);
+					successors[i].h = Heuristic(x, y, z);
 
-                closed[closedCount++] = curNode;
-            }
+					if (openCount == MaxNodes)
+						break;
 
-            return null;
-        }
-    }
+					open[openCount++] = successors[i];
+				}
+
+				if (openCount == MaxNodes || closedCount == MaxNodes)
+					break;
+
+				closed[closedCount++] = curNode;
+			}
+
+			return null;
+		}
+	}
 }

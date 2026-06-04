@@ -1,8 +1,7 @@
-using System;
-using Server.Items;
-using Server.Gumps;
-using Server.Mobiles;
 using Server.Engines.Quests;
+using Server.Gumps;
+using Server.Items;
+using Server.Mobiles;
 
 namespace Server.Engines.Fellowship
 {
@@ -24,7 +23,7 @@ namespace Server.Engines.Fellowship
             Name = NameList.RandomName("male");
 
             SpeechHue = 0x3B2;
-            Hue = Utility.RandomSkinHue();
+            Hue = Race.RandomSkinHue();
             Body = 0x190;
         }
 

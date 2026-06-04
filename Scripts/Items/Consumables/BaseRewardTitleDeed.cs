@@ -1,11 +1,10 @@
-using System;
 using Server.Mobiles;
 
 namespace Server.Items
 {
     public abstract class BaseRewardTitleDeed : Item
     {
-        public override int LabelNumber { get { return 1155604; } } // A Deed for a Reward Title
+        public override int LabelNumber => 1155604;  // A Deed for a Reward Title
         public abstract TextDefinition Title { get; }
 
         public BaseRewardTitleDeed()
@@ -15,28 +14,29 @@ namespace Server.Items
 
         public override void OnDoubleClick(Mobile from)
         {
-            if (IsChildOf(from.Backpack))
-            {
-                if (Title != null && (Title.String != null || Title.Number > 0))
-                {
-                    PlayerMobile pm = from as PlayerMobile;
+			if (from is PlayerMobile pm)
+			{
+				if (IsChildOf(pm.Backpack))
+				{
+					if (!Title.IsEmpty)
+					{
+						if ((Title.Number > 0 && pm.AddRewardTitle(Title.Number)) || (Title.String != null && pm.AddRewardTitle(Title.String)))
+						{
+							pm.SendLocalizedMessage(1155605, Title.ToString()); //Thou hath been bestowed the title ~1_TITLE~!
 
-                    if (pm != null)
-                    {
-                        if ((Title.Number > 0 && pm.AddRewardTitle(Title.Number)) ||
-                             Title.String != null && pm.AddRewardTitle(Title.String))
-                        {
-
-                            pm.SendLocalizedMessage(1155605, Title.ToString());  //Thou hath been bestowed the title ~1_TITLE~!
-                            Delete();
-                        }
-                        else
-                            pm.SendLocalizedMessage(1073626); // You already have that title!
-                    }
-                }
-            }
-            else
-                from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
+							Delete();
+						}
+						else
+						{
+							pm.SendLocalizedMessage(1073626); // You already have that title!
+						}
+					}
+				}
+				else
+				{
+					pm.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
+				}
+			}
         }
 
         public override void GetProperties(ObjectPropertyList list)
@@ -54,7 +54,7 @@ namespace Server.Items
         public override void Serialize(GenericWriter writer)
         {
             base.Serialize(writer);
-            writer.Write((int)0);
+            writer.Write(0);
         }
 
         public override void Deserialize(GenericReader reader)

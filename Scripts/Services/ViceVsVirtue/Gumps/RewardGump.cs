@@ -1,12 +1,8 @@
-using System;
-using Server;
+using Server.Engines.Points;
+using Server.Gumps;
 using Server.Items;
 using Server.Mobiles;
-using Server.Gumps;
-using Server.Guilds;
-using Server.Network;
-using Server.Engines.Points;
-using System.Collections.Generic;
+using System;
 
 namespace Server.Engines.VvV
 {
@@ -85,7 +81,7 @@ namespace Server.Engines.VvV
                 }
                 else
                 {
-                    if (User.AccessLevel == AccessLevel.Player)
+                    if (User.AccessLevel < AccessLevel.Counselor)
                         PointsSystem.ViceVsVirtue.DeductPoints(User, citem.Points);
 
                     User.SendLocalizedMessage(1073621); // Your reward has been placed in your backpack.

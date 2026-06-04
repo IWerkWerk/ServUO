@@ -1,9 +1,8 @@
-using System;
 using Server.Engines.Craft;
 
 namespace Server.Items
 {
-    [FlipableAttribute(0x13E4, 0x13E3)]
+    [Flipable(0x13E4, 0x13E3)]
     public class AncientSmithyHammer : BaseTool
     {
         private int m_Bonus;
@@ -48,10 +47,10 @@ namespace Server.Items
 
                     m_SkillMod = null;
                 }
-                else if (m_SkillMod == null && Parent is Mobile)
+                else if (m_SkillMod == null && Parent is Mobile mp)
                 {
-                    m_SkillMod = new DefaultSkillMod(SkillName.Blacksmith, true, m_Bonus);
-                    ((Mobile)Parent).AddSkillMod(m_SkillMod);
+                    m_SkillMod = new EquipedSkillMod(SkillName.Blacksmith, true, m_Bonus, this, mp);
+                    mp.AddSkillMod(m_SkillMod);
                 }
                 else if (m_SkillMod != null)
                 {
@@ -59,36 +58,24 @@ namespace Server.Items
                 }
             }
         }
-        public override CraftSystem CraftSystem
-        {
-            get
-            {
-                return DefBlacksmithy.CraftSystem;
-            }
-        }
-        public override int LabelNumber
-        {
-            get
-            {
-                return 1045127;
-            }
-        }// ancient smithy hammer
-        public override void OnAdded(object parent)
-        {
+        public override CraftSystem CraftSystem => DefBlacksmithy.CraftSystem;
+        public override int LabelNumber => 1045127;// ancient smithy hammer
+        public override void OnAdded(IEntity parent)
+		{
             base.OnAdded(parent);
 
-            if (m_Bonus != 0 && parent is Mobile)
+            if (m_Bonus != 0 && parent is Mobile mp)
             {
                 if (m_SkillMod != null)
                     m_SkillMod.Remove();
 
-                m_SkillMod = new DefaultSkillMod(SkillName.Blacksmith, true, m_Bonus);
-                ((Mobile)parent).AddSkillMod(m_SkillMod);
+                m_SkillMod = new EquipedSkillMod(SkillName.Blacksmith, true, m_Bonus, this, mp);
+                mp.AddSkillMod(m_SkillMod);
             }
         }
 
-        public override void OnRemoved(object parent)
-        {
+        public override void OnRemoved(IEntity parent)
+		{
             base.OnRemoved(parent);
 
             if (m_SkillMod != null)
@@ -109,9 +96,9 @@ namespace Server.Items
         {
             base.Serialize(writer);
 
-            writer.Write((int)1); // version
+            writer.Write(1); // version
 
-            writer.Write((int)m_Bonus);
+            writer.Write(m_Bonus);
         }
 
         public override void Deserialize(GenericReader reader)
@@ -120,7 +107,7 @@ namespace Server.Items
 
             int version = reader.ReadInt();
 
-            switch ( version )
+            switch (version)
             {
                 case 1:
                 case 0:
@@ -130,13 +117,13 @@ namespace Server.Items
                     }
             }
 
-            if (m_Bonus != 0 && Parent is Mobile)
+            if (m_Bonus != 0 && Parent is Mobile mp)
             {
                 if (m_SkillMod != null)
                     m_SkillMod.Remove();
 
-                m_SkillMod = new DefaultSkillMod(SkillName.Blacksmith, true, m_Bonus);
-                ((Mobile)Parent).AddSkillMod(m_SkillMod);
+                m_SkillMod = new EquipedSkillMod(SkillName.Blacksmith, true, m_Bonus, this, mp);
+                mp.AddSkillMod(m_SkillMod);
             }
 
             if (version == 0 && Hue == 0)

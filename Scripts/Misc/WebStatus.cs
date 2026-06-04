@@ -11,32 +11,30 @@ using Server.Network;
 
 namespace Server.Misc
 {
-	public class StatusPage : Timer
+	public static class StatusPage
 	{
-		public static readonly bool Enabled = false;
+		public static bool Enabled { get; set; }
 
 		private static HttpListener _Listener;
 
 		private static string _StatusPage = String.Empty;
 		private static byte[] _StatusBuffer = new byte[0];
 
-		private static readonly object _StatusLock = new object();
+		private static readonly Timer _RefreshTimer;
+
+		static StatusPage()
+		{
+			_RefreshTimer = Timer.DelayCall(TimeSpan.FromSeconds(5.0), TimeSpan.FromSeconds(60.0), OnTick);
+		}
 
 		public static void Initialize()
 		{
-			if (!Enabled)
-			{
-				return;
-			}
-
-			new StatusPage().Start();
-
 			Listen();
 		}
 
 		private static void Listen()
 		{
-			if (!HttpListener.IsSupported)
+			if (!Enabled || !HttpListener.IsSupported)
 			{
 				return;
 			}
@@ -54,7 +52,7 @@ namespace Server.Misc
 
 			if (_Listener.IsListening)
 			{
-				_Listener.BeginGetContext(ListenerCallback, null);
+				_ = _Listener.BeginGetContext(ListenerCallback, null);
 			}
 		}
 
@@ -64,19 +62,15 @@ namespace Server.Misc
 			{
 				var context = _Listener.EndGetContext(result);
 
-				byte[] buffer;
+				context.Response.ContentLength64 = _StatusBuffer.Length;
 
-				lock (_StatusLock)
-				{
-					buffer = _StatusBuffer;
-				}
-
-				context.Response.ContentLength64 = buffer.Length;
-				context.Response.OutputStream.Write(buffer, 0, buffer.Length);
+				context.Response.OutputStream.Write(_StatusBuffer, 0, _StatusBuffer.Length);
 				context.Response.OutputStream.Close();
 			}
-			catch
-			{ }
+			catch (Exception e)
+			{
+				Diagnostics.ExceptionLogging.LogException(e);
+			}
 
 			Listen();
 		}
@@ -85,27 +79,23 @@ namespace Server.Misc
 		{
 			var sb = new StringBuilder(input);
 
-			sb.Replace("&", "&amp;");
-			sb.Replace("<", "&lt;");
-			sb.Replace(">", "&gt;");
-			sb.Replace("\"", "&quot;");
-			sb.Replace("'", "&apos;");
+			_ = sb.Replace("&", "&amp;");
+			_ = sb.Replace("<", "&lt;");
+			_ = sb.Replace(">", "&gt;");
+			_ = sb.Replace("\"", "&quot;");
+			_ = sb.Replace("'", "&apos;");
 
 			return sb.ToString();
 		}
 
-		public StatusPage()
-			: base(TimeSpan.FromSeconds(5.0), TimeSpan.FromSeconds(60.0))
+		private static void OnTick()
 		{
-			Priority = TimerPriority.FiveSeconds;
-		}
-
-		protected override void OnTick()
-		{
-			if (!Directory.Exists("web"))
+			if (!Enabled)
 			{
-				Directory.CreateDirectory("web");
+				return;
 			}
+
+			_ = Directory.CreateDirectory("web");
 
 			using (var op = new StreamWriter("web/status.html"))
 			{
@@ -133,20 +123,16 @@ namespace Server.Misc
 				{
 					++index;
 
-					var g = m.Guild as Guild;
-
 					op.Write("         <tr class=\"ruo-result " + (index % 2 == 0 ? "even" : "odd") + "\"><td>");
 
-					if (g != null)
+					if (m.Guild is Guild g)
 					{
 						op.Write(Encode(m.Name));
 						op.Write(" [");
 
-						var title = m.GuildTitle;
+						var title = m.GuildTitle?.Trim();
 
-						title = title != null ? title.Trim() : String.Empty;
-
-						if (title.Length > 0)
+						if (title?.Length > 0)
 						{
 							op.Write(Encode(title));
 							op.Write(", ");
@@ -184,11 +170,8 @@ namespace Server.Misc
 				op.WriteLine("</html>");
 			}
 
-			lock (_StatusLock)
-			{
-				_StatusPage = File.ReadAllText("web/status.html");
-				_StatusBuffer = Encoding.UTF8.GetBytes(_StatusPage);
-			}
+			_StatusPage = File.ReadAllText("web/status.html");
+			_StatusBuffer = Encoding.UTF8.GetBytes(_StatusPage);
 		}
 	}
 }

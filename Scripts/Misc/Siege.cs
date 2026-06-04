@@ -15,43 +15,134 @@ namespace Server
 {
 	public static class Siege
 	{
-		public static bool SiegeShard = Config.Get("Siege.IsSiege", false);
-		public static int CharacterSlots = Config.Get("Siege.CharacterSlots", 1);
-		public static string FilePath = Path.Combine("Saves", "Siege.bin");
+		public static readonly string FilePath = Path.Combine("Saves", "Siege.bin");
 
-		public static int StatsPerDay = 15;
+		public static bool SiegeShard { get => Core.IsSiege; set => Core.IsSiege = value; }
 
-		public static Dictionary<PlayerMobile, Dictionary<SkillName, DateTime>> ROTTable { get; private set; }
-		public static Dictionary<PlayerMobile, int> StatsTable { get; private set; }
+		[ConfigProperty("Siege.CharacterSlots")]
+		public static int CharacterSlots { get => Config.Get("Siege.CharacterSlots", 1); set => Config.Set("Siege.CharacterSlots", value); }
+
+		[ConfigProperty("Siege.StatsPerDay")]
+		public static int StatsPerDay { get => Config.Get("Siege.StatsPerDay", 15); set => Config.Set("Siege.StatsPerDay", value); }
+
+		public static Dictionary<PlayerMobile, Dictionary<SkillName, DateTime>> ROTTable { get; } = new Dictionary<PlayerMobile, Dictionary<SkillName, DateTime>>();
+		public static Dictionary<PlayerMobile, int> StatsTable { get; } = new Dictionary<PlayerMobile, int>();
 
 		public static DateTime LastReset { get; private set; }
 
-		static Siege()
-		{
-			ROTTable = new Dictionary<PlayerMobile, Dictionary<SkillName, DateTime>>();
-			StatsTable = new Dictionary<PlayerMobile, int>();
-		}
-
 		public static void Configure()
 		{
-			if (SiegeShard)
-			{
-				EventSink.AfterWorldSave += OnAfterSave;
-				EventSink.Login += OnLogin;
+			Core.OnSiegeStateChanged += Invalidate;
 
-				EventSink.WorldSave += OnSave;
-				EventSink.WorldLoad += OnLoad;
-			}
+			EventSink.Login += OnLogin;
+
+			EventSink.WorldSave += OnSave;
+			EventSink.WorldLoad += OnLoad;
+
+			EventSink.AfterWorldSave += OnAfterSave;
+
+			EventSink.ContainerDroppedTo += OnDropped;
+
+			CommandSystem.Register("ResetROT", AccessLevel.GameMaster, e =>
+			{
+				if (!SiegeShard)
+				{
+					return;
+				}
+
+				LastReset = DateTime.Now;
+
+				e.Mobile.SendMessage("Rate over Time reset!");
+			});
+
+			CommandSystem.Register("GetROTInfo", AccessLevel.GameMaster, e =>
+			{
+				if (!SiegeShard)
+				{
+					return;
+				}
+
+				foreach (var kvp in ROTTable)
+				{
+					Console.WriteLine($"Player: {kvp.Key.Name}");
+
+					var stats = 0;
+
+					if (StatsTable.ContainsKey(kvp.Key))
+					{
+						stats = StatsTable[kvp.Key];
+					}
+
+					Console.WriteLine($"Stats gained today: {stats} of {StatsPerDay}");
+
+					Utility.PushColor(ConsoleColor.Magenta);
+
+					foreach (var kvp2 in kvp.Value)
+					{
+						var pergain = MinutesPerGain(kvp.Key, kvp.Key.Skills[kvp2.Key]);
+						var last = kvp2.Value;
+						var next = last.AddMinutes(pergain);
+
+						var nextg = next < DateTime.Now ? "now" : "in " + ((int)(next - DateTime.Now).TotalMinutes).ToString() + " minutes";
+
+						Console.WriteLine($"   {kvp2.Key}: last gained {last.ToShortTimeString()}, can gain {nextg} (every {pergain} minutes)");
+					}
+
+					Utility.PopColor();
+				}
+
+				Console.WriteLine("---");
+				Console.WriteLine($"Next Reset: {(LastReset + TimeSpan.FromHours(24) - DateTime.Now).TotalMinutes} minutes");
+			});
 		}
 
-		public static void OnSave(WorldSaveEventArgs e)
+		[CallPriority(Int32.MaxValue - 1)]
+		public static void Initialize()
+		{
+			Invalidate();
+		}
+
+		public static void Invalidate()
+		{
+			if (!SiegeShard)
+			{
+				return;
+			}
+
+			Utility.WriteLine(ConsoleColor.Red, "Initializing Siege Perilous Shard...");
+
+			var tick = Core.TickCount;
+
+			var toReset = new List<XmlSpawner>();
+
+			foreach (var item in World.Items.Values.OfType<XmlSpawner>().Where(sp => sp.Map == Map.Trammel && sp.Running))
+			{
+				toReset.Add(item);
+			}
+
+			foreach (var item in toReset)
+			{
+				item.DoReset = true;
+			}
+
+			ColUtility.Free(toReset);
+
+			Utility.WriteLine(ConsoleColor.Red, $"Reset {toReset.Count} trammel spawners in {Core.TickCount - tick} milliseconds!");
+		}
+
+		private static void OnSave(WorldSaveEventArgs e)
 		{
 			Persistence.Serialize(FilePath, OnSerialize);
 		}
 
-		public static void OnLoad()
+		private static void OnLoad()
 		{
 			Persistence.Deserialize(FilePath, OnDeserialize);
+		}
+
+		private static void OnAfterSave(AfterWorldSaveEventArgs e)
+		{
+			CheckTime();
 		}
 
 		private static void OnSerialize(GenericWriter writer)
@@ -128,156 +219,62 @@ namespace Server
 			CheckTime();
 		}
 
-		public static void OnLogin(LoginEventArgs e)
+		private static void OnLogin(LoginEventArgs e)
 		{
-			var pm = e.Mobile as PlayerMobile;
+			if (!SiegeShard)
+			{
+				return;
+			}
 
-			if (pm != null && pm.Map == Map.Trammel && pm.AccessLevel == AccessLevel.Player)
+			if (e.Mobile is PlayerMobile pm && pm.Map == Map.Trammel && pm.AccessLevel < AccessLevel.Counselor)
 			{
 				pm.MoveToWorld(new Point3D(989, 519, -50), Map.Malas);
 				pm.SendMessage("You have been removed from Trammel.");
 			}
 		}
 
-		public static void Initialize()
+		private static void OnDropped(ContainerDroppedToEventArgs e)
 		{
-			if (SiegeShard)
+			if (!SiegeShard)
 			{
-				CommandSystem.Register(
-					"ResetROT",
-					AccessLevel.GameMaster,
-					e =>
-					{
-						LastReset = DateTime.Now;
+				return;
+			}
 
-						e.Mobile.SendMessage("Rate over Time reset!");
-					});
+			var item = e.Dropped;
+			var from = e.Mobile;
+			var cont = e.Container;
 
-				CommandSystem.Register(
-					"GetROTInfo",
-					AccessLevel.GameMaster,
-					e =>
-					{
-						foreach (var kvp in ROTTable)
-						{
-							Console.WriteLine("Player: {0}", kvp.Key.Name);
-							
-							var stats = 0;
+			if (item != null && cont != from.Backpack && from is PlayerMobile pm && pm.BlessedItem != null && pm.BlessedItem == item)
+			{
+				pm.BlessedItem = null;
 
-							if (StatsTable.ContainsKey(kvp.Key))
-							{
-								stats = StatsTable[kvp.Key];
-							}
+				item.LootType = LootType.Regular;
 
-							Console.WriteLine("Stats gained today: {0} of {1}", stats, StatsPerDay.ToString());
-
-							Utility.PushColor(ConsoleColor.Magenta);
-							
-							foreach (var kvp2 in kvp.Value)
-							{
-								var pergain = MinutesPerGain(kvp.Key, kvp.Key.Skills[kvp2.Key]);
-								var last = kvp2.Value;
-								var next = last.AddMinutes(pergain);
-
-								var nextg = next < DateTime.Now
-									? "now"
-									: "in " + ((int)(next - DateTime.Now).TotalMinutes).ToString() + " minutes";
-
-								Console.WriteLine(
-									"   {0}: last gained {1}, can gain {2} (every {3} minutes)",
-									kvp2.Key.ToString(),
-									last.ToShortTimeString(),
-									nextg,
-									pergain.ToString());
-							}
-
-							Utility.PopColor();
-						}
-
-						Console.WriteLine("---");
-						Console.WriteLine(
-							"Next Reset: {0} minutes",
-							((LastReset + TimeSpan.FromHours(24) - DateTime.Now)).TotalMinutes.ToString());
-					});
-
-				Utility.PushColor(ConsoleColor.Red);
-				Console.Write("Initializing Siege Perilous Shard...");
-
-				var tick = Core.TickCount;
-
-				var toReset = new List<XmlSpawner>();
-
-				foreach (var item in World.Items.Values.OfType<XmlSpawner>().Where(sp => sp.Map == Map.Trammel && sp.Running))
-				{
-					toReset.Add(item);
-				}
-
-				foreach (var item in toReset)
-				{
-					item.DoReset = true;
-				}
-
-				Console.WriteLine("Reset {1} trammel spawners in {0} milliseconds!", Core.TickCount - tick, toReset.Count);
-				Utility.PopColor();
-
-				ColUtility.Free(toReset);
-
-                EventSink.ContainerDroppedTo += OnDropped;
-            }
+				pm.SendLocalizedMessage(1075292, item.Name ?? "#" + item.LabelNumber); // ~1_NAME~ has been unblessed.
+			}
 		}
 
-        public static void OnDropped(ContainerDroppedToEventArgs e)
-        {
-            if (!SiegeShard)
-                return;
-
-            var item = e.Dropped;
-            var from = e.Mobile;
-            var cont = e.Container;
-
-            if (item != null)
-            {
-                if (cont != from.Backpack && from is PlayerMobile && ((PlayerMobile)from).BlessedItem != null && ((PlayerMobile)from).BlessedItem == item)
-                {
-                    ((PlayerMobile)from).BlessedItem = null;
-                    item.LootType = LootType.Regular;
-
-                    from.SendLocalizedMessage(1075292, item.Name != null ? item.Name : "#" + item.LabelNumber.ToString()); // ~1_NAME~ has been unblessed.
-                }
-            }
-        }
-
-        /// <summary>
-        ///     Called in SpellHelper.cs CheckTravel method
-        /// </summary>
-        /// <param name="m"></param>
-		/// <param name="p"></param>
-		/// <param name="map"></param>
-        /// <param name="type"></param>
-        /// <returns>False fails travel check. True must pass other travel checks in SpellHelper.cs</returns>
-        public static bool CheckTravel(Mobile m, Point3D p, Map map, TravelCheckType type)
+		public static bool CheckTravel(Mobile m, Point3D p, Map map, TravelCheckType type)
 		{
-			if (m.AccessLevel > AccessLevel.Player)
+			if (!SiegeShard)
+			{
 				return true;
+			}
+
+			if (m.AccessLevel > AccessLevel.Player)
+			{
+				return true;
+			}
 
 			switch (type)
 			{
 				case TravelCheckType.RecallFrom:
-				case TravelCheckType.RecallTo:
-				{
-					return false;
-				}
+				case TravelCheckType.RecallTo: return false;
 				case TravelCheckType.GateFrom:
 				case TravelCheckType.GateTo:
-				case TravelCheckType.Mark:
-				{
-					return CanTravelTo(m, p, map);
-				}
+				case TravelCheckType.Mark: return CanTravelTo(m, p, map);
 				case TravelCheckType.TeleportFrom:
-				case TravelCheckType.TeleportTo:
-				{
-					return true;
-				}
+				case TravelCheckType.TeleportTo: return true;
 			}
 
 			return true;
@@ -288,13 +285,13 @@ namespace Server
 			return !(Region.Find(p, map) is DungeonRegion) && !SpellHelper.IsAnyT2A(map, p) && !SpellHelper.IsIlshenar(map, p);
 		}
 
-		public static void OnAfterSave(AfterWorldSaveEventArgs e)
-		{
-			CheckTime();
-		}
-
 		public static void CheckTime()
 		{
+			if (!SiegeShard)
+			{
+				return;
+			}
+
 			var now = DateTime.Now;
 
 			if (LastReset.AddHours(24) < now)
@@ -317,7 +314,7 @@ namespace Server
 
 		public static bool CheckSkillGain(PlayerMobile pm, int minutesPerSkill, Skill skill)
 		{
-			if (minutesPerSkill == 0)
+			if (!SiegeShard || minutesPerSkill <= 0)
 			{
 				return true;
 			}
@@ -345,14 +342,21 @@ namespace Server
 				return true;
 			}
 
-			ROTTable[pm] = new Dictionary<SkillName, DateTime>();
-			ROTTable[pm][sk] = DateTime.Now;
+			ROTTable[pm] = new Dictionary<SkillName, DateTime>
+			{
+				[sk] = DateTime.Now
+			};
 
 			return true;
 		}
 
 		public static int MinutesPerGain(Mobile m, Skill skill)
 		{
+			if (!SiegeShard)
+			{
+				return -1;
+			}
+
 			var value = skill.Base;
 
 			if (value < 70.0)
@@ -427,9 +431,7 @@ namespace Server
 
 		public static void TryBlessItem(PlayerMobile pm, object targeted)
 		{
-			var item = targeted as Item;
-
-			if (item != null)
+			if (targeted is Item item)
 			{
 				if (CanBlessItem(pm, item))
 				{
@@ -437,9 +439,7 @@ namespace Server
 					{
 						pm.BlessedItem.LootType = LootType.Regular;
 
-						pm.SendLocalizedMessage(
-							1075292,
-							pm.BlessedItem.Name ?? "#" + pm.BlessedItem.LabelNumber); // ~1_NAME~ has been unblessed.
+						pm.SendLocalizedMessage(1075292, pm.BlessedItem.Name ?? "#" + pm.BlessedItem.LabelNumber); // ~1_NAME~ has been unblessed.
 
 						pm.BlessedItem = null;
 					}
@@ -450,9 +450,7 @@ namespace Server
 						pm.BlessedItem = item;
 						pm.BlessedItem.LootType = LootType.Blessed;
 
-						pm.SendLocalizedMessage(
-							1075293,
-							pm.BlessedItem.Name ?? "#" + pm.BlessedItem.LabelNumber); // ~1_NAME~ has been blessed.
+						pm.SendLocalizedMessage(1075293, pm.BlessedItem.Name ?? "#" + pm.BlessedItem.LabelNumber); // ~1_NAME~ has been blessed.
 
 						if (old != null)
 						{
@@ -471,20 +469,16 @@ namespace Server
 
 		public static bool CanBlessItem(PlayerMobile pm, Item item)
 		{
-			return (pm.Items.Contains(item) || (pm.Backpack != null && pm.Backpack.Items.Contains(item)) && !item.Stackable &&
-					(item is BaseArmor || item is BaseJewel || item is BaseClothing || item is BaseWeapon));
+			return item.RootParent == pm && !item.Stackable && (item is BaseArmor || item is BaseJewel || item is BaseClothing || item is BaseWeapon);
 		}
 
 		public static void CheckUsesRemaining(Mobile from, Item item)
 		{
-			var uses = item as IUsesRemaining;
-
-			if (uses != null)
+			if (item is IUsesRemaining uses)
 			{
 				uses.ShowUsesRemaining = true;
-				uses.UsesRemaining--;
 
-				if (uses.UsesRemaining <= 0)
+				if (--uses.UsesRemaining <= 0)
 				{
 					item.Delete();
 

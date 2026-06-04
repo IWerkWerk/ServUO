@@ -1,7 +1,7 @@
+using Server.Diagnostics;
 using System;
 using System.Collections;
 using System.IO;
-using Server.Diagnostics;
 
 namespace Server.Commands
 {
@@ -9,13 +9,13 @@ namespace Server.Commands
     {
         public static void Initialize()
         {
-            CommandSystem.Register("DumpTimers", AccessLevel.Administrator, new CommandEventHandler(DumpTimers_OnCommand));
-            CommandSystem.Register("CountObjects", AccessLevel.Administrator, new CommandEventHandler(CountObjects_OnCommand));
-            CommandSystem.Register("ProfileWorld", AccessLevel.Administrator, new CommandEventHandler(ProfileWorld_OnCommand));
-            CommandSystem.Register("TraceInternal", AccessLevel.Administrator, new CommandEventHandler(TraceInternal_OnCommand));
-            CommandSystem.Register("TraceExpanded", AccessLevel.Administrator, new CommandEventHandler(TraceExpanded_OnCommand));
-            CommandSystem.Register("WriteProfiles", AccessLevel.Administrator, new CommandEventHandler(WriteProfiles_OnCommand));
-            CommandSystem.Register("SetProfiles", AccessLevel.Administrator, new CommandEventHandler(SetProfiles_OnCommand));
+            CommandSystem.Register("DumpTimers", AccessLevel.Administrator, DumpTimers_OnCommand);
+            CommandSystem.Register("CountObjects", AccessLevel.Administrator, CountObjects_OnCommand);
+            CommandSystem.Register("ProfileWorld", AccessLevel.Administrator, ProfileWorld_OnCommand);
+            CommandSystem.Register("TraceInternal", AccessLevel.Administrator, TraceInternal_OnCommand);
+            CommandSystem.Register("TraceExpanded", AccessLevel.Administrator, TraceExpanded_OnCommand);
+            CommandSystem.Register("WriteProfiles", AccessLevel.Administrator, WriteProfiles_OnCommand);
+            CommandSystem.Register("SetProfiles", AccessLevel.Administrator, SetProfiles_OnCommand);
         }
 
         [Usage("WriteProfiles")]
@@ -50,8 +50,9 @@ namespace Server.Commands
                     sw.WriteLine();
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                ExceptionLogging.LogException(ex);
             }
         }
 
@@ -76,8 +77,9 @@ namespace Server.Commands
                 using (StreamWriter sw = new StreamWriter("timerdump.log", true))
                     Timer.DumpInfo(sw);
             }
-            catch
+            catch (Exception ex)
             {
+                ExceptionLogging.LogException(ex);
             }
         }
 
@@ -93,7 +95,7 @@ namespace Server.Commands
                 {
                     Type type = item.GetType();
 
-                    object o = (object)table[type];
+                    object o = table[type];
 
                     if (o == null)
                         table[type] = 1;
@@ -109,7 +111,7 @@ namespace Server.Commands
                 {
                     Type type = m.GetType();
 
-                    object o = (object)table[type];
+                    object o = table[type];
 
                     if (o == null)
                         table[type] = 1;
@@ -163,7 +165,7 @@ namespace Server.Commands
                     int[] countTable = typeTable[itemType] as int[];
 
                     if (countTable == null)
-                        typeTable[itemType] = countTable = new int[9];
+                        typeTable[itemType] = countTable = new int[10];
 
                     if ((flags & ExpandFlag.Name) != 0)
                         ++countTable[0];
@@ -179,20 +181,23 @@ namespace Server.Commands
 
                     if ((flags & ExpandFlag.Blessed) != 0)
                         ++countTable[4];
+					/*
+					if ((flags & ExpandFlag.TempFlag) != 0)
+						++countTable[5];
 
-                    /*if ( ( flags & ExpandFlag.TempFlag ) != 0 )
-                    ++countTable[5];
-
-                    if ( ( flags & ExpandFlag.SaveFlag ) != 0 )
-                    ++countTable[6];*/
-
+					if ((flags & ExpandFlag.SaveFlag) != 0)
+						++countTable[6];
+					*/
                     if ((flags & ExpandFlag.Weight) != 0)
                         ++countTable[7];
 
                     if ((flags & ExpandFlag.Spawner) != 0)
                         ++countTable[8];
 
-                    itemType = itemType.BaseType;
+					if ((flags & ExpandFlag.VisList) != 0)
+						++countTable[9];
+
+					itemType = itemType.BaseType;
                 }
                 while (itemType != typeof(object));
             }
@@ -211,7 +216,8 @@ namespace Server.Commands
                         "TempFlag",
                         "SaveFlag",
                         "Weight",
-                        "Spawner"
+                        "Spawner",
+						"VisList"
                     };
 
                     ArrayList list = new ArrayList(typeTable);
@@ -235,8 +241,9 @@ namespace Server.Commands
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                ExceptionLogging.LogException(ex);
             }
         }
 
@@ -296,7 +303,7 @@ namespace Server.Commands
             {
                 ArrayList types = new ArrayList();
 
-                using (BinaryReader bin = new BinaryReader(new FileStream(String.Format("Saves/{0}/{0}.tdb", type), FileMode.Open, FileAccess.Read, FileShare.Read)))
+                using (BinaryReader bin = new BinaryReader(new FileStream(string.Format("Saves/{0}/{0}.tdb", type), FileMode.Open, FileAccess.Read, FileShare.Read)))
                 {
                     int count = bin.ReadInt32();
 
@@ -308,7 +315,7 @@ namespace Server.Commands
 
                 Hashtable table = new Hashtable();
 
-                using (BinaryReader bin = new BinaryReader(new FileStream(String.Format("Saves/{0}/{0}.idx", type), FileMode.Open, FileAccess.Read, FileShare.Read)))
+                using (BinaryReader bin = new BinaryReader(new FileStream(string.Format("Saves/{0}/{0}.idx", type), FileMode.Open, FileAccess.Read, FileShare.Read)))
                 {
                     int count = bin.ReadInt32();
 
@@ -350,8 +357,9 @@ namespace Server.Commands
                         op.WriteLine("{0}\t{1:F2}%\t{2}", de.Value, (100 * (int)de.Value) / (double)total, de.Key);
                 }
             }
-            catch
+            catch (Exception e)
             {
+                ExceptionLogging.LogException(e);
             }
         }
 
@@ -362,8 +370,8 @@ namespace Server.Commands
                 DictionaryEntry a = (DictionaryEntry)x;
                 DictionaryEntry b = (DictionaryEntry)y;
 
-                int aCount = this.GetCount(a.Value);
-                int bCount = this.GetCount(b.Value);
+                int aCount = GetCount(a.Value);
+                int bCount = GetCount(b.Value);
 
                 int v = -aCount.CompareTo(bCount);
 

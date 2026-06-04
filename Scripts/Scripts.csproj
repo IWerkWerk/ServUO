@@ -1,34 +1,35 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+
 	<PropertyGroup>
-		<TargetFramework>net48</TargetFramework>
 		<OutputType>Library</OutputType>
-		<AssemblyName>Scripts</AssemblyName>
+		<TargetFramework>net48</TargetFramework>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+		<ServerGarbageCollection>true</ServerGarbageCollection>
+		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<RootNamespace>Server</RootNamespace>
-		<AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
-		<GenerateAssemblyInfo>False</GenerateAssemblyInfo>
-		<UseVSHostingProcess>False</UseVSHostingProcess>
-		<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-		<UseWindowsForms>false</UseWindowsForms>
-		<Platforms>x64</Platforms>
 	</PropertyGroup>
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-		<OutputPath>..\</OutputPath>
-		<DefineConstants>TRACE;DEBUG;NEWTIMERS;ServUO</DefineConstants>
-		<DebugType>embedded</DebugType>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Debug'">
+		<DefineConstants>DEBUG;TRACE</DefineConstants>
 	</PropertyGroup>
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-		<OutputPath>..\</OutputPath>
-		<DefineConstants>TRACE;NEWTIMERS;ServUO</DefineConstants>
-		<DebugType>none</DebugType>
+
+	<PropertyGroup>
+		<DefineConstants>NEWTIMERS;NEWPARENT;ServUO;ServUO58</DefineConstants>
 	</PropertyGroup>
+
 	<ItemGroup>
-		<Reference Include="System.Web" />
+		<RuntimeHostConfigurationOption Include="System.Globalization.UseNls" Value="true" />
 	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\Server\Server.csproj" />
-		<ProjectReference Include="..\Ultima\Ultima.csproj" />
+		<ProjectReference Include="..\Settings\Settings.csproj" />
 	</ItemGroup>
+
 	<ItemGroup>
-		<PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
+		<Reference Include="System.Web" />
 	</ItemGroup>
 </Project>

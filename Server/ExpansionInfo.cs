@@ -20,15 +20,15 @@ namespace Server
 		EJ
 	}
 
-    public enum ThemePack
-    {
-        None = 0,
-        Kings,
-        Rustic,
-        Gothic
-    }
+	public enum ThemePack
+	{
+		None = 0,
+		Kings,
+		Rustic,
+		Gothic
+	}
 
-    [Flags]
+	[Flags]
 	public enum ClientFlags
 	{
 		None = 0x00000000,
@@ -70,7 +70,7 @@ namespace Server
 		Jungle = 0x00100000,
 		Shadowguard = 0x00200000,
 		TOL = 0x00400000,
-		EJ = 0x00800000, // TODO: Verify value
+		EJ = 0x00800000,
 
 		ExpansionNone = None,
 		ExpansionT2A = T2A,
@@ -83,7 +83,7 @@ namespace Server
 		ExpansionSA = ExpansionML | SA | Gothic | Rustic,
 		ExpansionHS = ExpansionSA | HS,
 		ExpansionTOL = ExpansionHS | TOL | Jungle | Shadowguard,
-		ExpansionEJ = ExpansionTOL | EJ
+		ExpansionEJ = ExpansionTOL | EJ,
 	}
 
 	[Flags]
@@ -100,9 +100,9 @@ namespace Server
 		SE = 0x00000080,
 		ML = 0x00000100,
 		Unk2 = 0x00000200,
-		UO3DClientType = 0x00000400,        
-        KR = 0x00000600, // uo:kr support flags
-        Unk3 = 0x00000800,
+		UO3DClientType = 0x00000400,
+		KR = 0x00000600, // uo:kr support flags
+		Unk3 = 0x00000800,
 		SeventhCharacterSlot = 0x00001000,
 		Unk4 = 0x00002000,
 		NewMovementSystem = 0x00004000,
@@ -119,7 +119,7 @@ namespace Server
 		ExpansionSA = ExpansionML,
 		ExpansionHS = ExpansionSA,
 		ExpansionTOL = ExpansionHS,
-		ExpansionEJ = ExpansionTOL
+		ExpansionEJ = ExpansionTOL,
 	}
 
 	[Flags]
@@ -137,7 +137,7 @@ namespace Server
 		Jungle = 0x100000,
 		Shadowguard = 0x200000,
 		TOL = 0x400000,
-		EJ = 0x800000, // TODO: Verify value
+		EJ = 0x800000,
 
 		HousingAOS = AOS,
 		HousingSE = HousingAOS | SE,
@@ -145,14 +145,14 @@ namespace Server
 		HousingSA = HousingML | SA | Gothic | Rustic,
 		HousingHS = HousingSA | HS,
 		HousingTOL = HousingHS | TOL | Jungle | Shadowguard,
-		HousingEJ = HousingTOL | EJ
+		HousingEJ = HousingTOL | EJ,
 	}
 
 	public class ExpansionInfo
 	{
-		public static ExpansionInfo CoreExpansion { get { return GetInfo(Core.Expansion); } }
+		public static ExpansionInfo CoreExpansion => GetInfo(Core.Expansion);
 
-		public static ExpansionInfo[] Table { get; private set; }
+		public static ExpansionInfo[] Table { get; }
 
 		static ExpansionInfo()
 		{
@@ -241,7 +241,7 @@ namespace Server
 					new ClientVersion("7.0.61.0"),
 					FeatureFlags.ExpansionEJ,
 					CharacterListFlags.ExpansionEJ,
-					HousingFlags.HousingEJ)
+					HousingFlags.HousingEJ),
 			};
 		}
 
@@ -257,29 +257,29 @@ namespace Server
 			switch (ex)
 			{
 				case Expansion.None:
-					return FeatureFlags.ExpansionNone;
+				return FeatureFlags.ExpansionNone;
 				case Expansion.T2A:
-					return FeatureFlags.ExpansionT2A;
+				return FeatureFlags.ExpansionT2A;
 				case Expansion.UOR:
-					return FeatureFlags.ExpansionUOR;
+				return FeatureFlags.ExpansionUOR;
 				case Expansion.UOTD:
-					return FeatureFlags.ExpansionUOTD;
+				return FeatureFlags.ExpansionUOTD;
 				case Expansion.LBR:
-					return FeatureFlags.ExpansionLBR;
+				return FeatureFlags.ExpansionLBR;
 				case Expansion.AOS:
-					return FeatureFlags.ExpansionAOS;
+				return FeatureFlags.ExpansionAOS;
 				case Expansion.SE:
-					return FeatureFlags.ExpansionSE;
+				return FeatureFlags.ExpansionSE;
 				case Expansion.ML:
-					return FeatureFlags.ExpansionML;
+				return FeatureFlags.ExpansionML;
 				case Expansion.SA:
-					return FeatureFlags.ExpansionSA;
+				return FeatureFlags.ExpansionSA;
 				case Expansion.HS:
-					return FeatureFlags.ExpansionHS;
+				return FeatureFlags.ExpansionHS;
 				case Expansion.TOL:
-					return FeatureFlags.ExpansionTOL;
+				return FeatureFlags.ExpansionTOL;
 				case Expansion.EJ:
-					return FeatureFlags.ExpansionEJ;
+				return FeatureFlags.ExpansionEJ;
 			}
 
 			return FeatureFlags.ExpansionNone;
@@ -302,7 +302,8 @@ namespace Server
 			return Table[v];
 		}
 
-		public int ID { get; private set; }
+		public int ID { get; }
+
 		public string Name { get; set; }
 
 		public ClientFlags ClientFlags { get; set; }
@@ -311,13 +312,7 @@ namespace Server
 		public ClientVersion RequiredClient { get; set; }
 		public HousingFlags CustomHousingFlag { get; set; }
 
-		public ExpansionInfo(
-			int id,
-			string name,
-			ClientFlags clientFlags,
-			FeatureFlags supportedFeatures,
-			CharacterListFlags charListFlags,
-			HousingFlags customHousingFlag)
+		public ExpansionInfo(int id, string name, ClientFlags clientFlags, FeatureFlags supportedFeatures, CharacterListFlags charListFlags, HousingFlags customHousingFlag)
 			: this(id, name, supportedFeatures, charListFlags, customHousingFlag)
 		{
 			ClientFlags = clientFlags;

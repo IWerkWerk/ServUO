@@ -1,23 +1,21 @@
-using System;
-
 namespace Server.Commands.Generic
 {
     public class SerialCommandImplementor : BaseCommandImplementor
     {
         public SerialCommandImplementor()
         {
-            this.Accessors = new string[] { "Serial" };
-            this.SupportRequirement = CommandSupport.Single;
-            this.AccessLevel = AccessLevel.Counselor;
-            this.Usage = "Serial <serial> <command>";
-            this.Description = "Invokes the command on a single object by serial.";
+            Accessors = new string[] { "Serial" };
+            SupportRequirement = CommandSupport.Single;
+            AccessLevel = AccessLevel.Counselor;
+            Usage = "Serial <serial> <command>";
+            Description = "Invokes the command on a single object by serial.";
         }
 
         public override void Execute(CommandEventArgs e)
         {
             if (e.Length >= 2)
             {
-                Serial serial = e.GetInt32(0);
+                Serial serial = e.GetSerial(0);
 
                 object obj = null;
 
@@ -33,7 +31,7 @@ namespace Server.Commands.Generic
                 else
                 {
                     BaseCommand command = null;
-                    this.Commands.TryGetValue(e.GetString(1), out command);
+                    Commands.TryGetValue(e.GetString(1), out command);
 
                     if (command == null)
                     {
@@ -45,7 +43,7 @@ namespace Server.Commands.Generic
                     }
                     else
                     {
-                        switch ( command.ObjectTypes )
+                        switch (command.ObjectTypes)
                         {
                             case ObjectTypes.Both:
                                 {
@@ -85,7 +83,7 @@ namespace Server.Commands.Generic
                         for (int i = 0; i < args.Length; ++i)
                             args[i] = oldArgs[i + 2];
 
-                        this.RunCommand(e.Mobile, obj, command, args);
+                        RunCommand(e.Mobile, obj, command, args);
                     }
                 }
             }

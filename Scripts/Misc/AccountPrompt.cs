@@ -1,41 +1,52 @@
 using System;
+
 using Server.Accounting;
 
 namespace Server.Misc
 {
-    public class AccountPrompt
-    {
-        public static void Initialize()
-        {
-            if (Accounts.Count == 0 && !Core.Service)
-            {
-                Console.WriteLine("This server has no accounts.");
-                Console.Write("Do you want to create the owner account now? (y/n)");
+	public class AccountPrompt
+	{
+		public static void Initialize()
+		{
+			if (Accounts.Count == 0 && !Core.Service)
+			{
+				ConsoleKeyInfo key;
 
-                string key = Console.ReadLine();
- 
-                if (key.ToUpper() == "Y")
-                {
-                    Console.WriteLine();
+				do
+				{
+					Utility.WriteLine(ConsoleColor.Red, "This server has no accounts.");
+					Utility.WriteLine(ConsoleColor.Yellow, "Create owner account? (Y/N)");
 
-                    Console.Write("Username: ");
-                    string username = Console.ReadLine();
+					key = Console.ReadKey();
+				}
+				while (key.Key != ConsoleKey.Y && key.Key != ConsoleKey.N);
 
-                    Console.Write("Password: ");
-                    string password = Console.ReadLine();
+				if (key.Key == ConsoleKey.Y)
+				{
+					Console.WriteLine();
 
-                    Account a = new Account(username, password);
-                    a.AccessLevel = AccessLevel.Owner;
+					Console.Write("Username: ");
+					var username = Console.ReadLine();
 
-                    Console.WriteLine("Account created.");
-                }
-                else
-                {
-                    Console.WriteLine();
+					Console.Write("Password: ");
+					var password = Console.ReadLine();
 
-                    Console.WriteLine("Account not created.");
-                }
-            }
-        }
-    }
+					var a = Accounts.Create(username, password);
+
+					if (a?.Deleted == false)
+					{
+						a.AccessLevel = AccessLevel.Owner;
+
+						Console.WriteLine("Account created.");
+
+						return;
+					}
+				}
+
+				Console.WriteLine();
+
+				Console.WriteLine("Account not created.");
+			}
+		}
+	}
 }

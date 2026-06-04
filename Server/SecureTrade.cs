@@ -22,80 +22,56 @@ namespace Server
 			m_From = new SecureTradeInfo(this, from, new SecureTradeContainer(this));
 			m_To = new SecureTradeInfo(this, to, new SecureTradeContainer(this));
 
-			var from6017 = (from.NetState != null && from.NetState.ContainerGridLines);
-			var to6017 = (to.NetState != null && to.NetState.ContainerGridLines);
+			var fromNS = from.NetState;
+			var toNS = to.NetState;
 
-			var from704565 = (from.NetState != null && from.NetState.NewSecureTrading);
-			var to704565 = (to.NetState != null && to.NetState.NewSecureTrading);
+			#region Update From
 
-			from.Send(new MobileStatus(from, to));
-			from.Send(new UpdateSecureTrade(m_From.Container, false, false));
-
-			if (from6017)
-			{
-				from.Send(new SecureTradeEquip6017(m_To.Container, to));
-			}
-			else
-			{
-				from.Send(new SecureTradeEquip(m_To.Container, to));
-			}
+			MobileStatus.Send(fromNS, to);
 
 			from.Send(new UpdateSecureTrade(m_From.Container, false, false));
+			from.Send(new UpdateSecureTrade(m_To.Container, false, false));
 
-			if (from6017)
-			{
-				from.Send(new SecureTradeEquip6017(m_From.Container, from));
-			}
-			else
-			{
-				from.Send(new SecureTradeEquip(m_From.Container, from));
-			}
+			SecureTradeEquip.Send(fromNS, m_From.Container, from);
+			SecureTradeEquip.Send(fromNS, m_To.Container, to);
 
 			from.Send(new DisplaySecureTrade(to, m_From.Container, m_To.Container, to.Name));
+
 			from.Send(new UpdateSecureTrade(m_From.Container, false, false));
 
-			if (from.Account != null && from704565)
+			if (from.Account != null && fromNS.NewSecureTrading)
 			{
-				from.Send(
-					new UpdateSecureTrade(m_From.Container, TradeFlag.UpdateLedger, from.Account.TotalGold, from.Account.TotalPlat));
+				from.Send(new UpdateSecureTrade(m_From.Container, TradeFlag.UpdateLedger, from.Account.TotalGold, from.Account.TotalPlat));
 			}
 
-			to.Send(new MobileStatus(to, from));
-			to.Send(new UpdateSecureTrade(m_To.Container, false, false));
+			#endregion
 
-			if (to6017)
-			{
-				to.Send(new SecureTradeEquip6017(m_From.Container, from));
-			}
-			else
-			{
-				to.Send(new SecureTradeEquip(m_From.Container, from));
-			}
+			#region Update To
 
-			to.Send(new UpdateSecureTrade(m_To.Container, false, false));
+			MobileStatus.Send(toNS, from);
 
-			if (to6017)
+			toNS.Send(new UpdateSecureTrade(m_To.Container, false, false));
+			toNS.Send(new UpdateSecureTrade(m_From.Container, false, false));
+
+			SecureTradeEquip.Send(toNS, m_To.Container, to);
+			SecureTradeEquip.Send(toNS, m_From.Container, from);
+
+			toNS.Send(new DisplaySecureTrade(from, m_To.Container, m_From.Container, from.Name));
+
+			toNS.Send(new UpdateSecureTrade(m_To.Container, false, false));
+
+			if (toNS.Account != null && toNS.NewSecureTrading)
 			{
-				to.Send(new SecureTradeEquip6017(m_To.Container, to));
-			}
-			else
-			{
-				to.Send(new SecureTradeEquip(m_To.Container, to));
+				toNS.Send(new UpdateSecureTrade(m_To.Container, TradeFlag.UpdateLedger, to.Account.TotalGold, to.Account.TotalPlat));
 			}
 
-			to.Send(new DisplaySecureTrade(from, m_To.Container, m_From.Container, from.Name));
-			to.Send(new UpdateSecureTrade(m_To.Container, false, false));
-
-			if (to.Account != null && to704565)
-			{
-				to.Send(new UpdateSecureTrade(m_To.Container, TradeFlag.UpdateLedger, to.Account.TotalGold, to.Account.TotalPlat));
-			}
+			#endregion
 		}
 
-		public SecureTradeInfo From { get { return m_From; } }
-		public SecureTradeInfo To { get { return m_To; } }
+		public SecureTradeInfo From => m_From;
+		public SecureTradeInfo To => m_To;
 
-		public bool Valid { get { return m_Valid; } }
+		public bool Valid => m_Valid;
 
 		public void Cancel()
 		{
@@ -193,8 +169,8 @@ namespace Server
 
 		private static void UpdateCurrency(SecureTradeInfo left, SecureTradeInfo right)
 		{
-            var ls = left.Mobile != null ? left.Mobile.NetState : null;
-            var rs = right.Mobile != null ? right.Mobile.NetState : null;
+			var ls = left.Mobile != null ? left.Mobile.NetState : null;
+			var rs = right.Mobile != null ? right.Mobile.NetState : null;
 
 			if (ls != null && ls.NewSecureTrading)
 			{
@@ -455,8 +431,8 @@ namespace Server
 		public SecureTradeContainer Container { get; private set; }
 		public VirtualCheck VirtualCheck { get; private set; }
 
-		public int Gold { get { return VirtualCheck.Gold; } set { VirtualCheck.Gold = value; } }
-		public int Plat { get { return VirtualCheck.Plat; } set { VirtualCheck.Plat = value; } }
+		public int Gold { get => VirtualCheck.Gold; set => VirtualCheck.Gold = value; }
+		public int Plat { get => VirtualCheck.Plat; set => VirtualCheck.Plat = value; }
 
 		public bool Accepted { get; set; }
 

@@ -12,7 +12,7 @@ namespace Server.Network
 
 		private byte[] m_Buffer;
 
-		public int Length { get { return m_Size; } }
+		public int Length => m_Size;
 
 		public ByteQueue()
 		{
@@ -80,27 +80,27 @@ namespace Server.Network
 				return 0;
 			}
 
-            if (buffer != null)
-            {
-                if (m_Head < m_Tail)
-                {
-                    Buffer.BlockCopy(m_Buffer, m_Head, buffer, offset, size);
-                }
-                else
-                {
-                    int rightLength = (m_Buffer.Length - m_Head);
+			if (buffer != null)
+			{
+				if (m_Head < m_Tail)
+				{
+					Buffer.BlockCopy(m_Buffer, m_Head, buffer, offset, size);
+				}
+				else
+				{
+					var rightLength = m_Buffer.Length - m_Head;
 
-                    if (rightLength >= size)
-                    {
-                        Buffer.BlockCopy(m_Buffer, m_Head, buffer, offset, size);
-                    }
-                    else
-                    {
-                        Buffer.BlockCopy(m_Buffer, m_Head, buffer, offset, rightLength);
-                        Buffer.BlockCopy(m_Buffer, 0, buffer, offset + rightLength, size - rightLength);
-                    }
-                }
-            }
+					if (rightLength >= size)
+					{
+						Buffer.BlockCopy(m_Buffer, m_Head, buffer, offset, size);
+					}
+					else
+					{
+						Buffer.BlockCopy(m_Buffer, m_Head, buffer, offset, rightLength);
+						Buffer.BlockCopy(m_Buffer, 0, buffer, offset + rightLength, size - rightLength);
+					}
+				}
+			}
 
 			m_Head = (m_Head + size) % m_Buffer.Length;
 			m_Size -= size;
@@ -123,7 +123,7 @@ namespace Server.Network
 
 			if (m_Head < m_Tail)
 			{
-				int rightLength = (m_Buffer.Length - m_Tail);
+				var rightLength = m_Buffer.Length - m_Tail;
 
 				if (rightLength >= size)
 				{
@@ -142,6 +142,59 @@ namespace Server.Network
 
 			m_Tail = (m_Tail + size) % m_Buffer.Length;
 			m_Size += size;
+		}
+
+		public int CopyTo(ByteQueue dest)
+		{
+			return CopyTo(dest, m_Size);
+		}
+
+		public int CopyTo(ByteQueue dest, int count)
+		{
+			if (this == dest || m_Buffer == dest.m_Buffer)
+			{
+				return 0;
+			}
+
+			if (count > m_Size)
+			{
+				count = m_Size;
+			}
+
+			if (count == 0)
+			{
+				return 0;
+			}
+
+			if (m_Head < m_Tail)
+			{
+				dest.Enqueue(m_Buffer, m_Head, count);
+			}
+			else
+			{
+				var rightLength = m_Buffer.Length - m_Head;
+
+				if (rightLength >= count)
+				{
+					dest.Enqueue(m_Buffer, m_Head, count);
+				}
+				else
+				{
+					dest.Enqueue(m_Buffer, m_Head, rightLength);
+					dest.Enqueue(m_Buffer, 0, count - rightLength);
+				}
+			}
+
+			m_Head = (m_Head + count) % m_Buffer.Length;
+			m_Size -= count;
+
+			if (m_Size == 0)
+			{
+				m_Head = 0;
+				m_Tail = 0;
+			}
+
+			return count;
 		}
 	}
 }

@@ -1,7 +1,7 @@
-using System;
-using System.Collections;
 using Server.Accounting;
 using Server.Network;
+using System;
+using System.Collections;
 
 namespace Server.RemoteAdmin
 {
@@ -11,10 +11,10 @@ namespace Server.RemoteAdmin
         static RemoteAdminHandlers()
         {
             //0x02 = login request, handled by AdminNetwork
-            Register(0x04, new OnPacketReceive(ServerInfoRequest));
-            Register(0x05, new OnPacketReceive(AccountSearch));
-            Register(0x06, new OnPacketReceive(RemoveAccount));
-            Register(0x07, new OnPacketReceive(UpdateAccount));
+            Register(0x04, ServerInfoRequest);
+            Register(0x05, AccountSearch);
+            Register(0x06, RemoveAccount);
+            Register(0x07, UpdateAccount);
         }
 
         public enum AcctSearchType : byte
@@ -63,12 +63,12 @@ namespace Server.RemoteAdmin
 
             ArrayList list = new ArrayList();
 
-            foreach (Account a in Accounts.GetAccounts())
+            foreach (IAccount a in Accounts.GetAccounts())
             {
                 if (!CanAccessAccount(state.Account, a))
                     continue;
 
-                switch ( type )
+                switch (type)
                 {
                     case AcctSearchType.Username:
                         {
@@ -140,7 +140,7 @@ namespace Server.RemoteAdmin
         }
 
         private static void UpdateAccount(NetState state, PacketReader pvSrc)
-        { 
+        {
             if (state.Account.AccessLevel < AccessLevel.Administrator)
             {
                 state.Send(new MessageBoxMessage("You do not have permission to edit accounts.", "Account Access Exception"));
@@ -150,7 +150,7 @@ namespace Server.RemoteAdmin
             string username = pvSrc.ReadString();
             string pass = pvSrc.ReadString();
 
-            Account a = Accounts.GetAccount(username) as Account;
+            IAccount a = Accounts.GetAccount(username);
 
             if (a != null && !CanAccessAccount(state.Account, a))
             {
@@ -165,7 +165,7 @@ namespace Server.RemoteAdmin
 
                 if (a == null)
                 {
-                    a = new Account(username, pass);
+                    a = Accounts.Create(username, pass);
                     CreatedAccount = true;
                 }
                 else if (pass != "(hidden)")

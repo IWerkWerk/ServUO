@@ -9,51 +9,80 @@
 [![GitHub](https://img.shields.io/github/license/servuo/servuo.svg?color=a)](https://github.com/ServUO/ServUO/blob/master/LICENSE)
 
 
-ServUO is a community driven Ultima Online Server Emulator written in C#.
+[ServUO] is a community driven Ultima Online Server Emulator written in C#.
 
 
-### Website
+#### Requirements
 
-[ServUO]
+[.NET 4.8] Runtime and Developer Pack
+
+[.NET 10.0] Runtime and SDK
+
+[Visual Studio] for editing and compiling.
 
 
 #### Windows
 
-Run `_windebug.bat` for development, attaching a debugger and/or extended output.
+Run `_windebug.bat` for development environments.
 
-Run `_winrelease.bat` for production environment.
-
-
-#### Other Platforms
-
-Run `make debug` for development, attaching a debugger and/or extended output.
-
-Run `make` or `make release` for production environment. Writing release is optinal by default
+Run `_winrelease.bat` for production environments.
 
 
-### Linux Dependencies
+#### OSX
+```
+brew install mono
+brew install dotnet
+dotnet build
+```
+To run: `mono ServUO.exe`
+
 
 #### Ubuntu / Debian
 ```
-sudo add-apt-repository ppa:dotnet/backports
-sudo apt-get update
-sudo apt-get -y install zlib1g mono-complete dotnet-sdk-10.0 dotnet-runtime-10.0
+apt-get install zlib1g-dev mono-complete dotnet-sdk-5.0 
+dotnet build
 ```
+To run: `mono ServUO.exe`
 
-#### Arch-based
-```
-sudo pacman -S make mono dotnet-sdk dotnet-runtime
-```
 
-### Summary
+#### Summary
 
-1. Starting with the `/Config` directory, make sure to read the readme first, then find and edit `Server.cfg` to set up the essentials.
+1. Starting with the `/Config` directory, find and edit `Server.cfg` to set up the essentials.
 2. Go through the remaining `*.cfg` files to ensure they suit your needs.
-3. For Windows, run `_winrelease.bat` to produce `ServUO.exe`, OSX/Linux users may run `make`.
-4. Run `ServUO`
-5. ???
-6. Profit!
+3. For Windows, run `_windebug.bat` to produce `ServUO.exe`, Linux users may run `Makefile`.
+4. Run `ServUO.exe` to make sure everything boots up, if everything went well, you should see your IP adress being listened on the port you specified.
+5. Load up UO and login! - If you require instructions on setting up your particular client, visit the Discord and ask!
 
 
-    [ServUO]: <https://www.servuo.dev>
+#### Extra Credit
+
+Special thanks to these contributors and sponsors!
+
+Projects:
+
+[ModernUO] [![Discord](https://img.shields.io/discord/751317910504603701.svg)](https://discord.gg/DHkNUsq)
+
+[TrueUO] [![Discord](https://img.shields.io/discord/205015541977579520.svg)](https://discord.gg/Hk53j9s2)
+
+Shards:
+
++ [Elemental]
++ [Enigma]
++ [Heritage]
++ [Outlands]
++ [Pandora]
+
+   [Elemental]: <https://uoelemental.com/>
+   [Enigma]: <https://www.uo-enigma.com>
+   [Heritage]: <https://www.trueuo.com>
+   [Outlands]: <https://www.uooutlands.com>
+   [Pandora]: <https://www.pandorauo.com>
+   
+   [ModernUO]: <https://github.com/modernuo/modernuo>
+   [TrueUO]: <https://github.com/trueuo/trueuo>
+
+   [ServUO]: <https://www.servuo.dev>
+   [.NET 4.8]: <https://dotnet.microsoft.com/download/dotnet-framework/net48>
+   [.NET 10.0]: <https://dotnet.microsoft.com/download/dotnet/10.0>
+   [Visual Studio]: <https://visualstudio.microsoft.com/>
 

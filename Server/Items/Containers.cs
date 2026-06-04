@@ -9,26 +9,45 @@ namespace Server.Items
 {
 	public class BankBox : Container
 	{
-		private static readonly Type _GoldType = ScriptCompiler.FindTypeByFullName("Server.Items.Gold");
-		private static readonly Type _CheckType = ScriptCompiler.FindTypeByFullName("Server.Items.BankCheck");
-
 		public static bool SendDeleteOnClose { get; set; }
 
-		private Mobile m_Owner;
-		private bool m_Open;
+		private static Type _GoldType;
+		private static Type _CheckType;
 
-		public override int DefaultMaxWeight { get { return 0; } }
+		public static bool IsGoldType(Item item)
+		{
+			if (item == null)
+			{
+				return false;
+			}
 
-		public override bool IsVirtualItem { get { return true; } }
+			if (_GoldType == null)
+			{
+				_GoldType = ScriptCompiler.FindTypeByFullName("Server.Items.Gold");
+			}
 
-		public Mobile Owner { get { return m_Owner; } }
+			if (_CheckType == null)
+			{
+				_CheckType = ScriptCompiler.FindTypeByFullName("Server.Items.BankCheck");
+			}
 
-		public bool Opened { get { return m_Open; } }
+			var type = item.GetType();
+
+			return (_GoldType != null && type.IsAssignableFrom(_GoldType)) || (_CheckType != null && type.IsAssignableFrom(_CheckType));
+		}
+
+		public Mobile Owner { get; private set; }
+
+		public bool Opened { get; private set; }
+
+		public override int DefaultMaxWeight => 0;
+
+		public override bool IsVirtualItem => true;
 
 		public BankBox(Mobile owner)
 			: base(0xE7C)
 		{
-			m_Owner = owner;
+			Owner = owner;
 
 			Movable = false;
 			Layer = Layer.Bank;
@@ -37,33 +56,28 @@ namespace Server.Items
 		public BankBox(Serial serial)
 			: base(serial)
 		{ }
-		
+
 		public void Open()
 		{
-			if (m_Owner != null && m_Owner.NetState != null)
+			if (Owner != null && Owner.NetState != null)
 			{
-			m_Open = true;
+				Opened = true;
 
-				m_Owner.PrivateOverheadMessage(
-					MessageType.Regular,
-					0x3B2,
-					true,
-					String.Format("Bank container has {0} items, {1} stones", TotalItems, TotalWeight),
-					m_Owner.NetState);
+				Owner.PrivateOverheadMessage(MessageType.Regular, 0x3B2, true, String.Format("Bank container has {0} items, {1} stones", TotalItems, TotalWeight), Owner.NetState);
 
-				m_Owner.Send(new EquipUpdate(this));
+				Owner.Send(new EquipUpdate(this));
 
-				DisplayTo(m_Owner);
+				DisplayTo(Owner);
 			}
 		}
 
 		public void Close()
 		{
-			m_Open = false;
+			Opened = false;
 
-			if (m_Owner != null && SendDeleteOnClose)
+			if (Owner != null && SendDeleteOnClose)
 			{
-				m_Owner.Send(RemovePacket);
+				Owner.Send(RemovePacket);
 			}
 		}
 
@@ -80,7 +94,7 @@ namespace Server.Items
 
 		public override bool IsAccessibleTo(Mobile check)
 		{
-			if ((check == m_Owner && m_Open) || check.AccessLevel >= AccessLevel.GameMaster)
+			if ((check == Owner && Opened) || check.AccessLevel >= AccessLevel.GameMaster)
 			{
 				return base.IsAccessibleTo(check);
 			}
@@ -90,7 +104,7 @@ namespace Server.Items
 
 		public override bool OnDragDrop(Mobile from, Item dropped)
 		{
-			if ((from == m_Owner && m_Open) || from.AccessLevel >= AccessLevel.GameMaster)
+			if ((from == Owner && Opened) || from.AccessLevel >= AccessLevel.GameMaster)
 			{
 				return base.OnDragDrop(from, dropped);
 			}
@@ -100,7 +114,7 @@ namespace Server.Items
 
 		public override bool OnDragDropInto(Mobile from, Item item, Point3D p)
 		{
-			if ((from == m_Owner && m_Open) || from.AccessLevel >= AccessLevel.GameMaster)
+			if ((from == Owner && Opened) || from.AccessLevel >= AccessLevel.GameMaster)
 			{
 				return base.OnDragDropInto(from, item, p);
 			}
@@ -118,16 +132,14 @@ namespace Server.Items
 			return base.GetTotal(type);
 		}
 
-		public override bool CheckHold(Mobile m, Item item, bool message, bool checkItems, int plusItems, int plusWeight)
+		public override bool CheckHold(Mobile m, Item item, bool message, bool checkItems, bool checkWeight, int plusItems, int plusWeight)
 		{
-			Type type = item.GetType();
-
-			if (AccountGold.Enabled && Owner != null && Owner.Account != null && (type.IsAssignableFrom(_GoldType) || type.IsAssignableFrom(_CheckType)))
+			if (AccountGold.Enabled && AccountGold.ConvertOnBank && IsGoldType(item))
 			{
 				return true;
 			}
 
-			return base.CheckHold(m, item, message, checkItems, plusItems, plusWeight);
+			return base.CheckHold(m, item, message, checkItems, checkWeight, plusItems, plusWeight);
 		}
 
 		public override void Serialize(GenericWriter writer)
@@ -136,8 +148,8 @@ namespace Server.Items
 
 			writer.Write(0); // version
 
-			writer.Write(m_Owner);
-			writer.Write(m_Open);
+			writer.Write(Owner);
+			writer.Write(Opened);
 		}
 
 		public override void Deserialize(GenericReader reader)
@@ -146,15 +158,15 @@ namespace Server.Items
 
 			reader.ReadInt();
 
-			m_Owner = reader.ReadMobile();
-			m_Open = reader.ReadBool();
+			Owner = reader.ReadMobile();
+			Opened = reader.ReadBool();
 
 			if (ItemID == 0xE41)
 			{
 				ItemID = 0xE7C;
 			}
 
-			if (m_Owner == null)
+			if (Owner == null)
 			{
 				Delete();
 			}

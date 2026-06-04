@@ -1,7 +1,7 @@
 #region References
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 
 using Server.Items;
 using Server.Mobiles;
@@ -23,6 +23,7 @@ namespace Server.Movement
 		public static void Initialize()
 		{
 			_Successor = Movement.Impl;
+
 			Movement.Impl = new FastMovementImpl();
 		}
 
@@ -42,53 +43,39 @@ namespace Server.Movement
 			var itemData = TileData.ItemTable[itemID];
 
 			if ((itemData.Flags & ImpassableSurface) == 0)
-			{
 				return true;
-			}
 
-			if (((itemData.Flags & TileFlag.Door) != 0 || itemID == 0x692 || itemID == 0x846 || itemID == 0x873 ||
-				 (itemID >= 0x6F5 && itemID <= 0x6F6)) && ignoreDoors)
-			{
-				return !(item is BaseHouseDoor) || m == null || ((BaseHouseDoor)item).CheckAccess(m);
-			}
+			if (((itemData.Flags & TileFlag.Door) != 0 || itemID == 0x692 || itemID == 0x846 || itemID == 0x873 || (itemID >= 0x6F5 && itemID <= 0x6F6)) && ignoreDoors)
+				return m == null || !(item is BaseHouseDoor d) || d.CheckAccess(m);
 
 			if ((itemID == 0x82 || itemID == 0x3946 || itemID == 0x3956) && ignoreSpellFields)
-			{
 				return true;
-			}
 
 			// hidden containers, per EA
 			if ((itemData.Flags & TileFlag.Container) != 0 && !item.Visible)
-			{
 				return true;
-			}
 
 			return item.Z + itemData.CalcHeight <= ourZ || ourTop <= item.Z;
 		}
 
-		private static bool IsOk(
-			Mobile m,
-			bool ignoreDoors,
-			bool ignoreSpellFields,
-			int ourZ,
-			int ourTop,
-			IEnumerable<StaticTile> tiles,
-			IEnumerable<Item> items)
+		private static bool IsOk(Mobile m, bool ignoreDoors, bool ignoreSpellFields, int ourZ, int ourTop, StaticTile[] tiles, HashSet<Item> items)
 		{
-			return tiles.All(t => IsOk(t, ourZ, ourTop)) && items.All(i => IsOk(m, i, ourZ, ourTop, ignoreDoors, ignoreSpellFields));
+			for (var i = 0; i < tiles.Length; i++)
+			{
+				if (!IsOk(tiles[i], ourZ, ourTop))
+					return false;
+			}
+
+			foreach (var item in items)
+			{
+				if (!IsOk(m, item, ourZ, ourTop, ignoreDoors, ignoreSpellFields))
+					return false;
+			}
+
+			return true;
 		}
 
-		private static bool Check(
-			Map map,
-			IPoint3D p,
-			List<Item> items,
-			int x,
-			int y,
-			int startTop,
-			int startZ,
-			bool canSwim,
-			bool cantWalk,
-			out int newZ)
+		private static bool Check(Map map, IPoint3D p, HashSet<Item> items, int x, int y, int startTop, int startZ, bool canSwim, bool cantWalk, out int newZ)
 		{
 			newZ = 0;
 
@@ -99,15 +86,9 @@ namespace Server.Movement
 			var considerLand = !landTile.Ignored;
 
 			if (landBlocks && canSwim && (landData.Flags & TileFlag.Wet) != 0)
-			{
-				//Impassable, Can Swim, and Is water.  Don't block it.
-				landBlocks = false;
-			}
+				landBlocks = false; // Impassable, Can Swim, and Is water.  Don't block it.
 			else if (cantWalk && (landData.Flags & TileFlag.Wet) == 0)
-			{
-				//Can't walk and it's not water
-				landBlocks = true;
-			}
+				landBlocks = true; // Can't walk and it's not water
 
 			int landZ = 0, landCenter = 0, landTop = 0;
 
@@ -118,9 +99,9 @@ namespace Server.Movement
 			var stepTop = startTop + StepHeight;
 			var checkTop = startZ + PersonHeight;
 
-            Mobile m = p as Mobile;
+			var m = p as Mobile;
 
-			var ignoreDoors = MovementImpl.AlwaysIgnoreDoors || m == null || !m.Alive || m.IsDeadBondedPet || m.Body.IsGhost ||
+			var ignoreDoors = MovementImpl.AlwaysIgnoreDoors(p) || m == null || !m.Alive || m.IsDeadBondedPet || m.Body.IsGhost ||
 							  m.Body.BodyID == 987;
 			var ignoreSpellFields = m is PlayerMobile && map.MapID != 0;
 
@@ -132,10 +113,9 @@ namespace Server.Movement
 			foreach (var tile in tiles)
 			{
 				itemData = TileData.ItemTable[tile.ID & TileData.MaxItemValue];
-                flags = itemData.Flags;
+				flags = itemData.Flags;
 
-                #region SA
-                if (m != null && m.Flying && (Insensitive.Equals(itemData.Name, "hover over") || (flags & TileFlag.HoverOver) != 0))
+				if (m != null && m.Flying && (Insensitive.Equals(itemData.Name, "hover over") || (flags & TileFlag.HoverOver) != 0))
 				{
 					newZ = tile.Z;
 					return true;
@@ -147,9 +127,7 @@ namespace Server.Movement
 					if (x >= 307 && x <= 354 && y >= 126 && y <= 192)
 					{
 						if (tile.Z > newZ)
-						{
 							newZ = tile.Z;
-						}
 
 						moveIsOk = true;
 					}
@@ -158,25 +136,18 @@ namespace Server.Movement
 						if ((y >= 333 && y <= 399) || (y >= 531 && y <= 597) || (y >= 739 && y <= 805))
 						{
 							if (tile.Z > newZ)
-							{
 								newZ = tile.Z;
-							}
 
 							moveIsOk = true;
 						}
 					}
 				}
-				#endregion
 
 				if ((flags & ImpassableSurface) != TileFlag.Surface && (!canSwim || (flags & TileFlag.Wet) == 0))
-				{
 					continue;
-				}
 
 				if (cantWalk && (flags & TileFlag.Wet) == 0)
-				{
 					continue;
-				}
 
 				itemZ = tile.Z;
 				itemTop = itemZ;
@@ -189,46 +160,30 @@ namespace Server.Movement
 					var cmp = Math.Abs(ourZ - p.Z) - Math.Abs(newZ - p.Z);
 
 					if (cmp > 0 || (cmp == 0 && ourZ > newZ))
-					{
 						continue;
-					}
 				}
 
 				if (ourTop > testTop)
-				{
 					testTop = ourTop;
-				}
 
 				if (!itemData.Bridge)
-				{
 					itemTop += itemData.Height;
-				}
 
 				if (stepTop < itemTop)
-				{
 					continue;
-				}
 
 				var landCheck = itemZ;
 
 				if (itemData.Height >= StepHeight)
-				{
 					landCheck += StepHeight;
-				}
 				else
-				{
 					landCheck += itemData.Height;
-				}
 
 				if (considerLand && landCheck < landCenter && landCenter > ourZ && testTop > landZ)
-				{
 					continue;
-				}
 
 				if (!IsOk(m, ignoreDoors, ignoreSpellFields, ourZ, testTop, tiles, items))
-				{
 					continue;
-				}
 
 				newZ = ourZ;
 				moveIsOk = true;
@@ -241,28 +196,20 @@ namespace Server.Movement
 				itemData = item.ItemData;
 				flags = itemData.Flags;
 
-				#region SA
 				if (m != null && m.Flying && (Insensitive.Equals(itemData.Name, "hover over") || (flags & TileFlag.HoverOver) != 0))
 				{
 					newZ = item.Z;
 					return true;
 				}
-				#endregion
 
 				if (item.Movable)
-				{
 					continue;
-				}
 
 				if ((flags & ImpassableSurface) != TileFlag.Surface && ((m != null && !m.CanSwim) || (flags & TileFlag.Wet) == 0))
-				{
 					continue;
-				}
 
 				if (cantWalk && (flags & TileFlag.Wet) == 0)
-				{
 					continue;
-				}
 
 				itemZ = item.Z;
 				itemTop = itemZ;
@@ -275,46 +222,30 @@ namespace Server.Movement
 					var cmp = Math.Abs(ourZ - p.Z) - Math.Abs(newZ - p.Z);
 
 					if (cmp > 0 || (cmp == 0 && ourZ > newZ))
-					{
 						continue;
-					}
 				}
 
 				if (ourTop > testTop)
-				{
 					testTop = ourTop;
-				}
 
 				if (!itemData.Bridge)
-				{
 					itemTop += itemData.Height;
-				}
 
 				if (stepTop < itemTop)
-				{
 					continue;
-				}
 
 				var landCheck = itemZ;
 
 				if (itemData.Height >= StepHeight)
-				{
 					landCheck += StepHeight;
-				}
 				else
-				{
 					landCheck += itemData.Height;
-				}
 
 				if (considerLand && landCheck < landCenter && landCenter > ourZ && testTop > landZ)
-				{
 					continue;
-				}
 
 				if (!IsOk(m, ignoreDoors, ignoreSpellFields, ourZ, testTop, tiles, items))
-				{
 					continue;
-				}
 
 				newZ = ourZ;
 				moveIsOk = true;
@@ -322,18 +253,14 @@ namespace Server.Movement
 			#endregion
 
 			if (!considerLand || landBlocks || stepTop < landZ)
-			{
 				return moveIsOk;
-			}
 
 			ourZ = landCenter;
 			ourTop = ourZ + PersonHeight;
 			testTop = checkTop;
 
 			if (ourTop > testTop)
-			{
 				testTop = ourTop;
-			}
 
 			var shouldCheck = true;
 
@@ -342,15 +269,11 @@ namespace Server.Movement
 				var cmp = Math.Abs(ourZ - p.Z) - Math.Abs(newZ - p.Z);
 
 				if (cmp > 0 || (cmp == 0 && ourZ > newZ))
-				{
 					shouldCheck = false;
-				}
 			}
 
 			if (!shouldCheck || !IsOk(m, ignoreDoors, ignoreSpellFields, ourZ, testTop, tiles, items))
-			{
 				return moveIsOk;
-			}
 
 			newZ = ourZ;
 			moveIsOk = true;
@@ -358,18 +281,15 @@ namespace Server.Movement
 			return moveIsOk;
 		}
 
-        public bool CheckMovement(IPoint3D p, Map map, Point3D loc, Direction d, out int newZ)
+		public bool CheckMovement(IPoint3D p, Map map, Point3D loc, Direction d, out int newZ)
 		{
+			newZ = 0;
+
 			if (!Enabled && _Successor != null)
-			{
 				return _Successor.CheckMovement(p, map, loc, d, out newZ);
-			}
 
 			if (map == null || map == Map.Internal)
-			{
-				newZ = 0;
 				return false;
-			}
 
 			var xStart = loc.X;
 			var yStart = loc.Y;
@@ -385,99 +305,54 @@ namespace Server.Movement
 			Offset((Direction)(((int)d + 1) & 0x7), ref xRight, ref yRight);
 
 			if (xForward < 0 || yForward < 0 || xForward >= map.Width || yForward >= map.Height)
-			{
-				newZ = 0;
 				return false;
-			}
 
-			int startZ, startTop;
+			var ignoreMovableImpassables = MovementImpl.IgnoresMovableImpassables(p);
 
-			IEnumerable<Item> itemsStart, itemsForward, itemsLeft, itemsRight;
-
-			var ignoreMovableImpassables = MovementImpl.IgnoreMovableImpassables;
 			var reqFlags = ImpassableSurface;
 
-			if (p is Mobile && ((Mobile)p).CanSwim)
-			{
+			var m = p as Mobile;
+
+			if (m != null && m.CanSwim)
 				reqFlags |= TileFlag.Wet;
-			}
 
-			if (checkDiagonals)
-			{
-				var sStart = map.GetSector(xStart, yStart);
-				var sForward = map.GetSector(xForward, yForward);
-				var sLeft = map.GetSector(xLeft, yLeft);
-				var sRight = map.GetSector(xRight, yRight);
+			HashSet<Item> list = null;
 
-				itemsStart = sStart.Items.Where(i => Verify(i, reqFlags, ignoreMovableImpassables, xStart, yStart));
-				itemsForward = sForward.Items.Where(i => Verify(i, reqFlags, ignoreMovableImpassables, xForward, yForward));
-				itemsLeft = sLeft.Items.Where(i => Verify(i, reqFlags, ignoreMovableImpassables, xLeft, yLeft));
-				itemsRight = sRight.Items.Where(i => Verify(i, reqFlags, ignoreMovableImpassables, xRight, yRight));
-			}
-			else
-			{
-				var sStart = map.GetSector(xStart, yStart);
-				var sForward = map.GetSector(xForward, yForward);
+			MovementPool.AcquireMoveCache(ref list, map.GetSector(xStart, yStart), i => Verify(i, reqFlags, ignoreMovableImpassables, xStart, yStart));
 
-				itemsStart = sStart.Items.Where(i => Verify(i, reqFlags, ignoreMovableImpassables, xStart, yStart));
-				itemsForward = sForward.Items.Where(i => Verify(i, reqFlags, ignoreMovableImpassables, xForward, yForward));
-				itemsLeft = Enumerable.Empty<Item>();
-				itemsRight = Enumerable.Empty<Item>();
-			}
+			GetStartZ(p, map, loc, list, out var startZ, out var startTop);
 
-			GetStartZ(p, map, loc, itemsStart, out startZ, out startTop);
-
-			List<Item> list = null;
-
-			MovementPool.AcquireMoveCache(ref list, itemsForward);
-            Mobile m = p as Mobile;
+			MovementPool.AcquireMoveCache(ref list, map.GetSector(xForward, yForward), i => Verify(i, reqFlags, ignoreMovableImpassables, xForward, yForward));
 
 			var moveIsOk = Check(map, p, list, xForward, yForward, startTop, startZ, m != null && m.CanSwim, m != null && m.CantWalk, out newZ);
 
+			if (moveIsOk && m != null && !m.Player && startZ - newZ >= 20) // fall height
+			{
+				if (m.Flying)
+					newZ = startZ;
+				else
+					moveIsOk = false;
+			}
+
 			if (m != null && moveIsOk && checkDiagonals)
 			{
-				int hold;
+				MovementPool.AcquireMoveCache(ref list, map.GetSector(xLeft, yLeft), i => Verify(i, reqFlags, ignoreMovableImpassables, xLeft, yLeft));
 
-                if (m.Player && m.AccessLevel < AccessLevel.GameMaster)
-				{
-					MovementPool.AcquireMoveCache(ref list, itemsLeft);
-
-					if (!Check(map, m, list, xLeft, yLeft, startTop, startZ, m.CanSwim, m.CantWalk, out hold))
-					{
-						moveIsOk = false;
-					}
-					else
-					{
-						MovementPool.AcquireMoveCache(ref list, itemsRight);
-
-						if (!Check(map, m, list, xRight, yRight, startTop, startZ, m.CanSwim, m.CantWalk, out hold))
-						{
-							moveIsOk = false;
-						}
-					}
-				}
+				if (!Check(map, m, list, xLeft, yLeft, startTop, startZ, m.CanSwim, m.CantWalk, out _))
+					moveIsOk = false;
 				else
 				{
-					MovementPool.AcquireMoveCache(ref list, itemsLeft);
+					MovementPool.AcquireMoveCache(ref list, map.GetSector(xRight, yRight), i => Verify(i, reqFlags, ignoreMovableImpassables, xRight, yRight));
 
-                    if (!Check(map, m, list, xLeft, yLeft, startTop, startZ, m.CanSwim, m.CantWalk, out hold))
-					{
-						MovementPool.AcquireMoveCache(ref list, itemsRight);
-
-                        if (!Check(map, m, list, xRight, yRight, startTop, startZ, m.CanSwim, m.CantWalk, out hold))
-						{
-							moveIsOk = false;
-						}
-					}
+					if (!Check(map, m, list, xRight, yRight, startTop, startZ, m.CanSwim, m.CantWalk, out _))
+						moveIsOk = false;
 				}
 			}
 
 			MovementPool.ClearMoveCache(ref list, true);
 
 			if (!moveIsOk)
-			{
 				newZ = startZ;
-			}
 
 			return moveIsOk;
 		}
@@ -490,24 +365,16 @@ namespace Server.Movement
 		private static bool Verify(Item item, TileFlag reqFlags, bool ignoreMovableImpassables)
 		{
 			if (item == null)
-			{
 				return false;
-			}
 
 			if (ignoreMovableImpassables && item.Movable && item.ItemData.Impassable)
-			{
 				return false;
-			}
 
 			if ((item.ItemData.Flags & reqFlags) == 0)
-			{
 				return false;
-			}
 
 			if (item is BaseMulti || item.ItemID > TileData.MaxItemValue)
-			{
 				return false;
-			}
 
 			return true;
 		}
@@ -525,18 +392,14 @@ namespace Server.Movement
 			var landData = TileData.LandTable[landTile.ID & TileData.MaxLandValue];
 			var landBlocks = (landData.Flags & TileFlag.Impassable) != 0;
 
-            Mobile m = p as Mobile;
+			var m = p as Mobile;
 
 			if (m != null)
 			{
 				if (landBlocks && m.CanSwim && (landData.Flags & TileFlag.Wet) != 0)
-				{
 					landBlocks = false;
-				}
 				else if (m.CantWalk && (landData.Flags & TileFlag.Wet) == 0)
-				{
 					landBlocks = true;
-				}
 			}
 
 			int landZ = 0, landCenter = 0, landTop = 0;
@@ -564,24 +427,16 @@ namespace Server.Movement
 				var calcTop = (tile.Z + tileData.CalcHeight);
 
 				if (isSet && calcTop < zCenter)
-				{
 					continue;
-				}
 
 				if ((tileData.Flags & TileFlag.Surface) == 0 && ((m != null && !m.CanSwim) || (tileData.Flags & TileFlag.Wet) == 0))
-				{
 					continue;
-				}
 
 				if (loc.Z < calcTop)
-				{
 					continue;
-				}
 
 				if (m != null && m.CantWalk && (tileData.Flags & TileFlag.Wet) == 0)
-				{
 					continue;
-				}
 
 				zLow = tile.Z;
 				zCenter = calcTop;
@@ -605,24 +460,16 @@ namespace Server.Movement
 				var calcTop = item.Z + itemData.CalcHeight;
 
 				if (isSet && calcTop < zCenter)
-				{
 					continue;
-				}
 
 				if ((itemData.Flags & TileFlag.Surface) == 0 && ((m != null && !m.CanSwim) || (itemData.Flags & TileFlag.Wet) == 0))
-				{
 					continue;
-				}
 
 				if (loc.Z < calcTop)
-				{
 					continue;
-				}
 
 				if (m != null && m.CantWalk && (itemData.Flags & TileFlag.Wet) == 0)
-				{
 					continue;
-				}
 
 				zLow = item.Z;
 				zCenter = calcTop;
@@ -638,13 +485,9 @@ namespace Server.Movement
 			}
 
 			if (!isSet)
-			{
 				zLow = zTop = loc.Z;
-			}
 			else if (loc.Z > zTop)
-			{
 				zTop = loc.Z;
-			}
 		}
 
 		public void Offset(Direction d, ref int x, ref int y)
@@ -684,45 +527,41 @@ namespace Server.Movement
 
 		private static class MovementPool
 		{
-			private static readonly object _MovePoolLock = new object();
-			private static readonly Queue<List<Item>> _MoveCachePool = new Queue<List<Item>>(0x400);
+			private static readonly ConcurrentQueue<HashSet<Item>> _MoveCachePool = new ConcurrentQueue<HashSet<Item>>();
 
-			public static void AcquireMoveCache(ref List<Item> cache, IEnumerable<Item> items)
+			public static void AcquireMoveCache(ref HashSet<Item> cache, Sector s, Predicate<Item> predicate)
 			{
-				if (cache == null)
+				if (cache != null)
+					cache.Clear();
+				else if (!_MoveCachePool.TryDequeue(out cache))
+					cache = new HashSet<Item>(0x10);
+
+				if (predicate != null)
 				{
-					lock (_MovePoolLock)
+					foreach (var item in s.Items)
 					{
-						cache = _MoveCachePool.Count > 0 ? _MoveCachePool.Dequeue() : new List<Item>(0x10);
+						if (predicate(item))
+							cache.Add(item);
 					}
 				}
 				else
-				{
-					cache.Clear();
-				}
-
-				cache.AddRange(items);
+					cache.UnionWith(s.Items);
 			}
 
-			public static void ClearMoveCache(ref List<Item> cache, bool free)
+			public static void ClearMoveCache(ref HashSet<Item> cache, bool free)
 			{
-				if (cache != null)
-				{
-					cache.Clear();
-				}
+				if (cache == null)
+					return;
+
+				cache.Clear();
 
 				if (!free)
-				{
 					return;
-				}
 
-				lock (_MovePoolLock)
-				{
-					if (_MoveCachePool.Count < 0x400)
-					{
-						_MoveCachePool.Enqueue(cache);
-					}
-				}
+				if (_MoveCachePool.Count < 0x400)
+					_MoveCachePool.Enqueue(cache);
+				else
+					cache.TrimExcess();
 
 				cache = null;
 			}

@@ -1,5 +1,3 @@
-using System;
-using Server;
 using Server.Gumps;
 
 namespace Server.Items
@@ -12,16 +10,16 @@ namespace Server.Items
             AddImage(0, 0, 0x761C);
             int y = 20;
 
-            if (title != null)
+            if (!title.IsEmpty)
             {
                 if (title.Number > 0)
                 {
-                    AddHtmlLocalized(50, y, 450, 20, 1154645, String.Format("#{0}", title.Number.ToString()), 0, false, false);
+                    AddHtmlLocalized(50, y, 450, 20, 1154645, string.Format("#{0}", title.Number.ToString()), 0, false, false);
                     y += 30;
                 }
                 else
                 {
-                    AddHtml(50, y, 450, 20, String.Format("<CENTER>{0}</CENTER>", title.String), false, false);
+                    AddHtml(50, y, 450, 20, string.Format("<CENTER>{0}</CENTER>", title.String), false, false);
                     y += 30;
                 }
             }
@@ -64,17 +62,7 @@ namespace Server.Items
         {
             base.GetProperties(list);
 
-            if (Title != null)
-            {
-                if (Title.Number > 0)
-                {
-                    list.Add(Title.Number);
-                }
-                else
-                {
-                    list.Add(Title.String);
-                }
-            }
+			TextDefinition.AddTo(list, Title);
         }
 
         public override void Serialize(GenericWriter writer)

@@ -9,7 +9,7 @@ namespace Server.Diagnostics
 	{
 		private static readonly Dictionary<string, TimerProfile> _profiles = new Dictionary<string, TimerProfile>();
 
-		public static IEnumerable<TimerProfile> Profiles { get { return _profiles.Values; } }
+		public static IEnumerable<TimerProfile> Profiles => _profiles.Values;
 
 		public static TimerProfile Acquire(string name)
 		{
@@ -18,9 +18,8 @@ namespace Server.Diagnostics
 				return null;
 			}
 
-			TimerProfile prof;
 
-			if (!_profiles.TryGetValue(name, out prof))
+			if (!_profiles.TryGetValue(name, out var prof))
 			{
 				_profiles.Add(name, prof = new TimerProfile(name));
 			}
@@ -28,13 +27,9 @@ namespace Server.Diagnostics
 			return prof;
 		}
 
-		private long _created, _started, _stopped;
-
-		public long Created { get { return _created; } set { _created = value; } }
-
-		public long Started { get { return _started; } set { _started = value; } }
-
-		public long Stopped { get { return _stopped; } set { _stopped = value; } }
+		public long Created { get; set; }
+		public long Started { get; set; }
+		public long Stopped { get; set; }
 
 		public TimerProfile(string name)
 			: base(name)
@@ -44,7 +39,7 @@ namespace Server.Diagnostics
 		{
 			base.WriteTo(op);
 
-			op.Write("\t{0,12:N0} {1,12:N0} {2,-12:N0}", _created, _started, _stopped);
+			op.Write("\t{0,12:N0} {1,12:N0} {2,-12:N0}", Created, Started, Stopped);
 		}
 	}
 }

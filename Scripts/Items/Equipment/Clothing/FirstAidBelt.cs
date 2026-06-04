@@ -5,13 +5,13 @@ namespace Server.Items
 {
     public class FirstAidBelt : Container
     {
-        public override bool IsArtifact { get { return true; } }
-        public override int LabelNumber { get { return 1158681; } } // First Aid Belt
+        public override bool IsArtifact => true;
+        public override int LabelNumber => 1158681;  // First Aid Belt
 
-        public override int DefaultGumpID { get { return 0x3C; } }
-        public override int DefaultMaxItems { get { return 1; } }
-        public override int DefaultMaxWeight { get { return 100; } }
-        public override double DefaultWeight { get { return 2.0; } }
+        public override int DefaultGumpID => 0x3C;
+        public override int DefaultMaxItems => 1;
+        public override int DefaultMaxWeight => 100;
+        public override double DefaultWeight => 2.0;
 
         private int m_WeightReduction;
         private int m_HealingBonus;
@@ -42,9 +42,9 @@ namespace Server.Items
         [CommandProperty(AccessLevel.GameMaster)]
         public AosAttributes Attributes { get { return m_Attributes; } set { } }
 
-        public Item Bandage { get { return Items.Count > 0 ? Items[0] : null; } }
-        public int MaxBandage { get { return DefaultMaxWeight * 10; } }
-        
+        public Item Bandage => Items.Count > 0 ? Items[0] : null;
+        public int MaxBandage => DefaultMaxWeight * 10;
+
         [Constructable]
         public FirstAidBelt()
             : base(0xA1F6)
@@ -56,7 +56,7 @@ namespace Server.Items
 
         public override void OnAfterDuped(Item newItem)
         {
-            var belt = newItem as FirstAidBelt;
+            FirstAidBelt belt = newItem as FirstAidBelt;
 
             if (belt != null)
             {
@@ -71,7 +71,7 @@ namespace Server.Items
         {
         }
 
-        public override bool DisplaysContent { get { return false; } }
+        public override bool DisplaysContent => false;
 
         public override void UpdateTotal(Item sender, TotalType type, int delta)
         {
@@ -117,7 +117,7 @@ namespace Server.Items
             return false;
         }
 
-        public override bool CheckHold(Mobile m, Item item, bool message, bool checkItems, int plusItems, int plusWeight)
+        public override bool CheckHold(Mobile m, Item item, bool message, bool checkItems, bool checkWeight, int plusItems, int plusWeight)
         {
             if (!Movable)
                 return false;
@@ -137,7 +137,7 @@ namespace Server.Items
                 Items.ForEach(i => currentAmount += i.Amount);
 
                 if (item.Amount + currentAmount <= MaxBandage)
-                    return base.CheckHold(m, item, message, checkItems, plusItems, plusWeight);
+                    return base.CheckHold(m, item, message, checkItems, checkWeight, plusItems, plusWeight);
                 else
                     m.SendLocalizedMessage(1080017); // That container cannot hold more items.
             }

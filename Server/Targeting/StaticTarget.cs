@@ -2,35 +2,42 @@ namespace Server.Targeting
 {
 	public class StaticTarget : IPoint3D
 	{
-		private Point3D m_Location;
-		private readonly int m_ItemID;
-
 		public StaticTarget(Point3D location, int itemID)
+			: this(location, itemID, 0)
+		{ }
+
+		public StaticTarget(Point3D location, int itemID, int hue)
 		{
-			m_Location = location;
-			m_ItemID = itemID & TileData.MaxItemValue;
-			m_Location.Z += TileData.ItemTable[m_ItemID].CalcHeight;
+			ItemID = itemID & TileData.MaxItemValue;
+			Hue = hue & 0x3FFF;
+
+			location.Z += TileData.ItemTable[ItemID].CalcHeight;
+
+			Location = location;
 		}
 
 		[CommandProperty(AccessLevel.Counselor)]
-		public Point3D Location { get { return m_Location; } }
+		public Point3D Location { get; }
 
 		[CommandProperty(AccessLevel.Counselor)]
-		public string Name { get { return TileData.ItemTable[m_ItemID].Name; } }
+		public int X => Location.X;
 
 		[CommandProperty(AccessLevel.Counselor)]
-		public TileFlag Flags { get { return TileData.ItemTable[m_ItemID].Flags; } }
+		public int Y => Location.Y;
 
 		[CommandProperty(AccessLevel.Counselor)]
-		public int X { get { return m_Location.X; } }
+		public int Z => Location.Z;
 
 		[CommandProperty(AccessLevel.Counselor)]
-		public int Y { get { return m_Location.Y; } }
+		public int ItemID { get; }
 
 		[CommandProperty(AccessLevel.Counselor)]
-		public int Z { get { return m_Location.Z; } }
+		public int Hue { get; }
 
 		[CommandProperty(AccessLevel.Counselor)]
-		public int ItemID { get { return m_ItemID; } }
+		public string Name => TileData.ItemTable[ItemID].Name;
+
+		[CommandProperty(AccessLevel.Counselor)]
+		public TileFlag Flags => TileData.ItemTable[ItemID].Flags;
 	}
 }

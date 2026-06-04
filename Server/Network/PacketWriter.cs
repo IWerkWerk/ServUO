@@ -1,8 +1,9 @@
 #region References
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
+using System.Threading;
 #endregion
 
 namespace Server.Network
@@ -12,7 +13,7 @@ namespace Server.Network
 	/// </summary>
 	public class PacketWriter
 	{
-		private static readonly Stack<PacketWriter> m_Pool = new Stack<PacketWriter>();
+		private static readonly ConcurrentStack<PacketWriter> m_Pool = new ConcurrentStack<PacketWriter>();
 
 		public static PacketWriter CreateInstance()
 		{
@@ -21,23 +22,13 @@ namespace Server.Network
 
 		public static PacketWriter CreateInstance(int capacity)
 		{
-			PacketWriter pw = null;
-
-			lock (m_Pool)
+			if (m_Pool.TryPop(out var pw))
 			{
-				if (m_Pool.Count > 0)
-				{
-					pw = m_Pool.Pop();
-
-					if (pw != null)
-					{
-						pw.m_Capacity = capacity;
-						pw.m_Stream.SetLength(0);
-					}
-				}
+				pw.m_Pooled = false;
+				pw.m_Capacity = capacity;
+				pw.m_Stream.SetLength(0);
 			}
-
-			if (pw == null)
+			else
 			{
 				pw = new PacketWriter(capacity);
 			}
@@ -45,28 +36,13 @@ namespace Server.Network
 			return pw;
 		}
 
-		public static void ReleaseInstance(PacketWriter pw)
+		public static void ReleaseInstance(ref PacketWriter pw)
 		{
-			lock (m_Pool)
+			if ((pw?.m_Pooled) == false)
 			{
-				if (!m_Pool.Contains(pw))
-				{
-					m_Pool.Push(pw);
-				}
-				else
-				{
-					try
-					{
-						using (StreamWriter op = new StreamWriter("neterr.log"))
-						{
-							op.WriteLine("{0}\tInstance pool contains writer", DateTime.UtcNow);
-						}
-					}
-					catch
-					{
-						Console.WriteLine("net error");
-					}
-				}
+				pw.m_Pooled = true;
+
+				m_Pool.Push(Interlocked.Exchange(ref pw, null));
 			}
 		}
 
@@ -75,7 +51,8 @@ namespace Server.Network
 		/// </summary>
 		private readonly MemoryStream m_Stream;
 
-		private int m_Capacity;
+		private volatile bool m_Pooled;
+		private volatile int m_Capacity;
 
 		/// <summary>
 		///     Internal format buffer.
@@ -190,7 +167,7 @@ namespace Server.Network
 				value = String.Empty;
 			}
 
-			int length = value.Length;
+			var length = value.Length;
 
 			m_Stream.SetLength(m_Stream.Length + size);
 
@@ -201,20 +178,9 @@ namespace Server.Network
 			else
 			{
 				Encoding.ASCII.GetBytes(value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
+
 				m_Stream.Position += size;
 			}
-
-			/*byte[] buffer = Encoding.ASCII.GetBytes( value );
-
-			if ( buffer.Length >= size )
-			{
-				m_Stream.Write( buffer, 0, size );
-			}
-			else
-			{
-				m_Stream.Write( buffer, 0, buffer.Length );
-				Fill( size - buffer.Length );
-			}*/
 		}
 
 		/// <summary>
@@ -228,17 +194,13 @@ namespace Server.Network
 				value = String.Empty;
 			}
 
-			int length = value.Length;
+			var length = value.Length;
 
 			m_Stream.SetLength(m_Stream.Length + length + 1);
 
 			Encoding.ASCII.GetBytes(value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
+
 			m_Stream.Position += length + 1;
-
-			/*byte[] buffer = Encoding.ASCII.GetBytes( value );
-
-			m_Stream.Write( buffer, 0, buffer.Length );
-			m_Stream.WriteByte( 0 );*/
 		}
 
 		/// <summary>
@@ -249,23 +211,16 @@ namespace Server.Network
 			if (value == null)
 			{
 				Console.WriteLine("Network: Attempted to WriteLittleUniNull() with null value");
+
 				value = String.Empty;
 			}
 
-			int length = value.Length;
+			var length = value.Length;
 
 			m_Stream.SetLength(m_Stream.Length + ((length + 1) * 2));
 
 			m_Stream.Position += Encoding.Unicode.GetBytes(value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
 			m_Stream.Position += 2;
-
-			/*byte[] buffer = Encoding.Unicode.GetBytes( value );
-
-			m_Stream.Write( buffer, 0, buffer.Length );
-
-			m_Buffer[0] = 0;
-			m_Buffer[1] = 0;
-			m_Stream.Write( m_Buffer, 0, 2 );*/
 		}
 
 		/// <summary>
@@ -276,12 +231,13 @@ namespace Server.Network
 			if (value == null)
 			{
 				Console.WriteLine("Network: Attempted to WriteLittleUniFixed() with null value");
+
 				value = String.Empty;
 			}
 
 			size *= 2;
 
-			int length = value.Length;
+			var length = value.Length;
 
 			m_Stream.SetLength(m_Stream.Length + size);
 
@@ -292,22 +248,9 @@ namespace Server.Network
 			else
 			{
 				Encoding.Unicode.GetBytes(value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
+
 				m_Stream.Position += size;
 			}
-
-			/*size *= 2;
-
-			byte[] buffer = Encoding.Unicode.GetBytes( value );
-
-			if ( buffer.Length >= size )
-			{
-				m_Stream.Write( buffer, 0, size );
-			}
-			else
-			{
-				m_Stream.Write( buffer, 0, buffer.Length );
-				Fill( size - buffer.Length );
-			}*/
 		}
 
 		/// <summary>
@@ -318,24 +261,16 @@ namespace Server.Network
 			if (value == null)
 			{
 				Console.WriteLine("Network: Attempted to WriteBigUniNull() with null value");
+
 				value = String.Empty;
 			}
 
-			int length = value.Length;
+			var length = value.Length;
 
 			m_Stream.SetLength(m_Stream.Length + ((length + 1) * 2));
 
-			m_Stream.Position += Encoding.BigEndianUnicode.GetBytes(
-				value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
+			m_Stream.Position += Encoding.BigEndianUnicode.GetBytes(value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
 			m_Stream.Position += 2;
-
-			/*byte[] buffer = Encoding.BigEndianUnicode.GetBytes( value );
-
-			m_Stream.Write( buffer, 0, buffer.Length );
-
-			m_Buffer[0] = 0;
-			m_Buffer[1] = 0;
-			m_Stream.Write( m_Buffer, 0, 2 );*/
 		}
 
 		/// <summary>
@@ -346,39 +281,26 @@ namespace Server.Network
 			if (value == null)
 			{
 				Console.WriteLine("Network: Attempted to WriteBigUniFixed() with null value");
+
 				value = String.Empty;
 			}
 
 			size *= 2;
 
-			int length = value.Length;
+			var length = value.Length;
 
 			m_Stream.SetLength(m_Stream.Length + size);
 
 			if ((length * 2) >= size)
 			{
-				m_Stream.Position += Encoding.BigEndianUnicode.GetBytes(
-					value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
+				m_Stream.Position += Encoding.BigEndianUnicode.GetBytes(value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
 			}
 			else
 			{
 				Encoding.BigEndianUnicode.GetBytes(value, 0, length, m_Stream.GetBuffer(), (int)m_Stream.Position);
+
 				m_Stream.Position += size;
 			}
-
-			/*size *= 2;
-
-			byte[] buffer = Encoding.BigEndianUnicode.GetBytes( value );
-
-			if ( buffer.Length >= size )
-			{
-				m_Stream.Write( buffer, 0, size );
-			}
-			else
-			{
-				m_Stream.Write( buffer, 0, buffer.Length );
-				Fill( size - buffer.Length );
-			}*/
 		}
 
 		/// <summary>
@@ -408,17 +330,17 @@ namespace Server.Network
 		/// <summary>
 		///     Gets the total stream length.
 		/// </summary>
-		public long Length { get { return m_Stream.Length; } }
+		public long Length => m_Stream.Length;
 
 		/// <summary>
 		///     Gets or sets the current stream position.
 		/// </summary>
-		public long Position { get { return m_Stream.Position; } set { m_Stream.Position = value; } }
+		public long Position { get => m_Stream.Position; set => m_Stream.Position = value; }
 
 		/// <summary>
 		///     The internal stream used by this PacketWriter instance.
 		/// </summary>
-		public MemoryStream UnderlyingStream { get { return m_Stream; } }
+		public MemoryStream UnderlyingStream => m_Stream;
 
 		/// <summary>
 		///     Offsets the current position from an origin.

@@ -1,18 +1,16 @@
-using System;
-using Server;
-using Server.Gumps;
-using Server.Engines;
-using Server.Multis;
 using Server.Commands;
+using Server.Gumps;
+using Server.Multis;
+using System;
 
 namespace Server.Items
 {
-    [FlipableAttribute(0x407C, 0x407D)]
+    [Flipable(0x407C, 0x407D)]
     public class Incubator : Container, ISecurable
     {
         public static readonly int MaxEggs = 6;
 
-        public override int LabelNumber { get { return 1112479; } } //an incubator
+        public override int LabelNumber => 1112479;  //an incubator
 
         private SecureLevel m_Level;
 
@@ -23,8 +21,8 @@ namespace Server.Items
             set { m_Level = value; }
         }
 
-        public override int DefaultGumpID { get { return 1156; } }
-        public override int DefaultDropSound { get { return 66; } }
+        public override int DefaultGumpID => 1156;
+        public override int DefaultDropSound => 66;
 
         [Constructable]
         public Incubator()
@@ -73,16 +71,17 @@ namespace Server.Items
             return canDrop;
         }
 
-        public override bool CheckHold(Mobile m, Item item, bool message, bool checkItems, int plusItems, int plusWeight)
+        public override bool CheckHold(Mobile m, Item item, bool message, bool checkItems, bool checkWeight, int plusItems, int plusWeight)
         {
             if (!BaseHouse.CheckSecured(this))
             {
                 m.SendLocalizedMessage(1113711); //The incubator must be secured for the egg to grow, not locked down.
                 return false;
             }
+
             if (!(item is ChickenLizardEgg))
             {
-                m.SendMessage("This will only accept chicken eggs."); 
+                m.SendMessage("This will only accept chicken eggs.");
                 return false;
             }
 
@@ -109,13 +108,13 @@ namespace Server.Items
 
         public static void Initialize()
         {
-            CommandSystem.Register("IncreaseStage", AccessLevel.Counselor, new CommandEventHandler(IncreaseStage_OnCommand));
+            CommandSystem.Register("IncreaseStage", AccessLevel.Counselor, IncreaseStage_OnCommand);
         }
 
         public static void IncreaseStage_OnCommand(CommandEventArgs e)
         {
             e.Mobile.SendMessage("Target the egg.");
-            e.Mobile.BeginTarget(12, false, Server.Targeting.TargetFlags.None, new TargetCallback(IncreaseStage_OnTarget));
+            e.Mobile.BeginTarget(12, false, Targeting.TargetFlags.None, IncreaseStage_OnTarget);
         }
 
         public static void IncreaseStage_OnTarget(Mobile from, object targeted)
@@ -136,12 +135,12 @@ namespace Server.Items
         {
             base.Serialize(writer);
 
-            writer.Write((int)0); // version
+            writer.Write(0); // version
 
             writer.Write((int)m_Level);
 
             if (Items.Count > 0)
-                Timer.DelayCall(TimeSpan.FromSeconds(10), new TimerCallback(CheckEggs_Callback));
+                Timer.DelayCall(TimeSpan.FromSeconds(10), CheckEggs_Callback);
         }
 
         public override void Deserialize(GenericReader reader)
@@ -153,7 +152,7 @@ namespace Server.Items
             m_Level = (SecureLevel)reader.ReadInt();
 
             if (Items.Count > 0)
-                Timer.DelayCall(TimeSpan.FromSeconds(60), new TimerCallback(CheckEggs_Callback));
+                Timer.DelayCall(TimeSpan.FromSeconds(60), CheckEggs_Callback);
         }
     }
 }

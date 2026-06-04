@@ -1,121 +1,117 @@
-﻿using System;
-using System.IO;
+using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Server.Engines.Chat
 {
-    public class ChatLogging
-    {
-        public static readonly bool Enabled = true;
+	public class ChatLogging
+	{
+		public static bool Enabled { get => ChatSystem.LoggingEnabled; set => ChatSystem.LoggingEnabled = value; }
 
-        private static StreamWriter m_Output;
-        private static Dictionary<string, StreamWriter> m_OutputPerChannel;
+		private static readonly Dictionary<string, StreamWriter> m_OutputPerChannel = new Dictionary<string, StreamWriter>();
 
-        public static void Initialize()
-        {
-            if (!Directory.Exists("Logs"))
-                Directory.CreateDirectory("Logs");
+		private static readonly StreamWriter m_Output;
 
-            var directory = Path.Combine("Logs", "Chat");
+		static ChatLogging()
+		{
+			var directory = Path.Combine(Core.BaseDirectory, "Logs", "Chat");
 
-            if (!Directory.Exists(directory))
-                Directory.CreateDirectory(directory);
+			if (!Directory.Exists(directory))
+			{
+				Directory.CreateDirectory(directory);
+			}
 
-            m_OutputPerChannel = new Dictionary<string, StreamWriter>();
+			try
+			{
+				var path = Path.Combine(directory, $"{DateTime.UtcNow.ToLongDateString()}.log");
 
-            try
-            {
-                m_Output = new StreamWriter(Path.Combine(directory, string.Format("{0}.log", DateTime.UtcNow.ToLongDateString())), true);
+				m_Output = new StreamWriter(path, true)
+				{
+					AutoFlush = true
+				};
 
-                m_Output.AutoFlush = true;
+				m_Output.WriteLine("##############################");
+				m_Output.WriteLine($"Log started on {DateTime.UtcNow}");
+				m_Output.WriteLine();
+			}
+			catch
+			{ }
+		}
 
-                m_Output.WriteLine("##############################");
-                m_Output.WriteLine("Log started on {0}", DateTime.UtcNow);
-                m_Output.WriteLine();
-            }
-            catch
-            {
-            }
-        }
+		public static void WriteLine(string channel, string format, params object[] args)
+		{
+			WriteLine(channel, String.Format(format, args));
+		}
 
-        public static void WriteLine(string channel, string format, params object[] args)
-        {
-            WriteLine(channel, string.Format(format, args));
-        }
+		public static void WriteLine(string channel, string text)
+		{
+			if (!Enabled)
+			{
+				return;
+			}
 
-        public static void WriteLine(string channel, string text)
-        {
-            if (!Enabled)
-                return;
+			try
+			{
+				m_Output.WriteLine($"{DateTime.UtcNow}: [{channel}] {text}");
 
-            try
-            {
-                m_Output.WriteLine("{0}: [{1}] {2}", DateTime.UtcNow, channel, text);
+				if (!m_OutputPerChannel.TryGetValue(channel, out var channelOutput))
+				{
+					var path = Path.Combine("Logs", "Chat", "Channels");
 
-                StreamWriter channelOutput;
+					if (!Directory.Exists(path))
+					{
+						Directory.CreateDirectory(path);
+					}
 
-                if (m_OutputPerChannel.ContainsKey(channel))
-                    channelOutput = m_OutputPerChannel[channel];
-                else
-                {
-                    var path = "Logs";
+					path = Path.Combine(path, $"{channel}.log");
 
-                    AppendPath(ref path, "chat");
-                    AppendPath(ref path, "channels");
-                    path = Path.Combine(path, string.Format("{0}.log", channel));
+					m_OutputPerChannel[channel] = channelOutput = new StreamWriter(path, true)
+					{
+						AutoFlush = true
+					};
+				}
 
-                    channelOutput = new StreamWriter(path, true);
-                    channelOutput.AutoFlush = true;
+				channelOutput.WriteLine($"{DateTime.UtcNow}: {text}");
+			}
+			catch
+			{ }
+		}
 
-                    m_OutputPerChannel[channel] = channelOutput;
-                }
+		public static void LogMessage(string channel, string username, string message)
+		{
+			WriteLine(channel, $"{username} says: {message}");
+		}
 
-                channelOutput.WriteLine("{0}: {1}", DateTime.UtcNow, text);
-            }
-            catch
-            {
-            }
-        }
+		public static void LogCreateChannel(string channel)
+		{
+			WriteLine(channel, "************** Channel was created.");
+		}
 
-        public static void AppendPath(ref string path, string toAppend)
-        {
-            path = Path.Combine(path, toAppend);
+		public static void LogRemoveChannel(string channel)
+		{
+			WriteLine(channel, "************** Channel was removed.");
+		}
 
-            if (!Directory.Exists(path))
-                Directory.CreateDirectory(path);
-        }
+		public static void LogJoin(string channel, string username)
+		{
+			WriteLine(channel, $"{username} joined the channel.");
+		}
 
-        public static void LogMessage(string channel, string username, string message)
-        {
-            WriteLine(channel, "{0} says: {1}", username, message);
-        }
+		public static void LogLeave(string channel, string username)
+		{
+			WriteLine(channel, $"{username} left the channel.");
 
-        public static void LogCreateChannel(string channel)
-        {
-            WriteLine(channel, "************** Channel was created.");
-        }
+			if (m_OutputPerChannel.TryGetValue(channel, out var channelOutput))
+			{
+				m_OutputPerChannel.Remove(channel);
 
-        public static void LogRemoveChannel(string channel)
-        {
-            WriteLine(channel, "************** Channel was removed.");
-        }
+				channelOutput.Dispose();
+			}
+		}
 
-        public static void LogJoin(string channel, string username)
-        {
-            WriteLine(channel, "{0} joined the channel.", username);
-        }
-
-        public static void LogLeave(string channel, string username)
-        {
-            WriteLine(channel, "{0} left the channel.", username);
-
-            if ( m_OutputPerChannel.ContainsKey( channel ) )
-            	m_OutputPerChannel[channel].Dispose();
-        }
-
-        public static void Log(string channel, string message)
-        {
-            WriteLine(channel, message);
-        }
-    }
+		public static void Log(string channel, string message)
+		{
+			WriteLine(channel, message);
+		}
+	}
 }

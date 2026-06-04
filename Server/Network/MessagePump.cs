@@ -1,7 +1,6 @@
 #region References
 using System;
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Threading;
 
 using Server.Diagnostics;
@@ -9,27 +8,26 @@ using Server.Diagnostics;
 
 namespace Server.Network
 {
-	public static class MessagePump
+	public class MessagePump
 	{
-		private static readonly ConcurrentQueue<NetState> m_Queue = new ConcurrentQueue<NetState>();
+		private ConcurrentQueue<NetState> m_Queue;
+		private ConcurrentQueue<NetState> m_WorkingQueue;
 
-        private static readonly ConcurrentQueue<NetState> m_Throttled = new ConcurrentQueue<NetState>();
+		private readonly ConcurrentQueue<NetState> m_Throttled;
 
-        public static Listener[] Listeners { get; private set; }
+		public Listener[] Listeners { get; set; }
 
-        public static long AcceptsPerSecond => Listeners.Sum(l => l.AcceptsPerSecond);
-
-        public static void Start()
+		public MessagePump()
 		{
 			var ipep = Listener.EndPoints;
 
 			Listeners = new Listener[ipep.Length];
 
-			bool success = false;
+			var success = false;
 
 			do
 			{
-				for (int i = 0; i < ipep.Length; i++)
+				for (var i = 0; i < ipep.Length; i++)
 				{
 					Listeners[i] = new Listener(ipep[i]);
 
@@ -38,23 +36,25 @@ namespace Server.Network
 
 				if (!success)
 				{
-					Utility.PushColor(ConsoleColor.Yellow);
-					Console.WriteLine("Retrying...");
-					Utility.PopColor();
+					Utility.WriteLine(ConsoleColor.Yellow, "Retrying...");
 
 					Thread.Sleep(10000);
 				}
 			}
 			while (!success);
+
+			m_Queue = new ConcurrentQueue<NetState>();
+			m_WorkingQueue = new ConcurrentQueue<NetState>();
+			m_Throttled = new ConcurrentQueue<NetState>();
 		}
 
-        public static void AddListener(Listener l)
+		public void AddListener(Listener l)
 		{
 			var old = Listeners;
 
 			Listeners = new Listener[old.Length + 1];
 
-			for (int i = 0; i < old.Length; ++i)
+			for (var i = 0; i < old.Length; ++i)
 			{
 				Listeners[i] = old[i];
 			}
@@ -62,79 +62,83 @@ namespace Server.Network
 			Listeners[old.Length] = l;
 		}
 
-        private static void CheckListener()
+		private void CheckListener()
 		{
-			foreach (Listener l in Listeners)
+			foreach (var l in Listeners)
 			{
-				foreach (SocketState state in l.Slice())
+				var accepted = l.Slice();
+
+				foreach (var s in accepted)
 				{
-					NetState ns = new NetState(state);
+					var ns = new NetState(s, this);
 
 					ns.Start();
 
-                    if (ns.Running && Display(ns))
+					if (ns.Running && Display(ns))
 					{
-						Utility.PushColor(ConsoleColor.Green);
-						Console.WriteLine("Client: {0}: Connected. [{1} Online]", ns, NetState.Instances.Count);
-						Utility.PopColor();
+						Utility.WriteLine(ConsoleColor.Green, $"Client: {ns}: Connected. [{NetState.Instances.Count:N0} Online]");
 					}
 				}
 			}
 		}
 
-        public static bool Display(NetState ns)
-        {
-            if (ns == null)
-                return false;
-
-            string state = ns.ToString();
-
-            foreach (var str in _NoDisplay)
-            {
-                if (str == state)
-                    return false;
-            }
-
-            return true;
-        }
-
-        private static string[] _NoDisplay =
-        {
-            "54.39.99.106",
-        };
-
-        public static void OnReceive(NetState ns)
+		public static bool Display(NetState ns)
 		{
-            m_Queue.Enqueue(ns);
+			if (ns == null)
+			{
+				return false;
+			}
+
+			var state = ns.ToString();
+
+			foreach (var str in _NoDisplay)
+			{
+				if (str == state)
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		private static readonly string[] _NoDisplay =
+		{
+			"192.99.10.155",
+			"192.99.69.21",
+		};
+
+		public void OnReceive(NetState ns)
+		{
+			m_Queue.Enqueue(ns);
 
 			Core.Set();
 		}
 
-        public static void Slice()
-        {
-            CheckListener();
+		public void Slice()
+		{
+			CheckListener();
 
-            var limit = m_Queue.Count;
+			m_Queue = Interlocked.Exchange(ref m_WorkingQueue, m_Queue);
 
-            while (--limit >= 0 && m_Queue.TryDequeue(out NetState ns))
-            {
-                if (ns.Running)
-                {
-                    HandleReceive(ns);
-                }
-            }
+			NetState ns;
 
-            while (m_Throttled.TryDequeue(out NetState ns))
-            {
-            	if (ns.Running)
-                {
-	                m_Queue.Enqueue(ns);
-	            }
-            }
-        }
+			while (m_WorkingQueue.TryDequeue(out ns))
+			{
+				if (ns.Running)
+				{
+					HandleReceive(ns);
+				}
+			}
+
+			while (m_Throttled.TryDequeue(out ns))
+			{
+				m_Queue.Enqueue(ns);
+			}
+		}
 
 		private const int BufferSize = 4096;
-        private static readonly BufferPool m_Buffers = new BufferPool("Processor", 4, BufferSize);
+		private readonly BufferPool m_Buffers = new BufferPool("Processor", 4, BufferSize);
 
 		public static bool HandleSeed(NetState ns, ByteQueue buffer)
 		{
@@ -145,20 +149,18 @@ namespace Server.Network
 				ns.Seeded = true;
 				return true;
 			}
-			
+
 			if (buffer.Length >= 4)
 			{
 				var m_Peek = new byte[4];
 
-				buffer.Dequeue(m_Peek, 0, 4);
+				_ = buffer.Dequeue(m_Peek, 0, 4);
 
-				uint seed = (uint)((m_Peek[0] << 24) | (m_Peek[1] << 16) | (m_Peek[2] << 8) | m_Peek[3]);
+				var seed = (uint)((m_Peek[0] << 24) | (m_Peek[1] << 16) | (m_Peek[2] << 8) | m_Peek[3]);
 
 				if (seed == 0)
 				{
-					Utility.PushColor(ConsoleColor.Red);
-					Console.WriteLine("Login: {0}: Invalid Client", ns);
-					Utility.PopColor();
+					Utility.WriteLine(ConsoleColor.Red, $"Login: {ns}: Invalid Client");
 
 					ns.Dispose();
 
@@ -174,98 +176,113 @@ namespace Server.Network
 			return false;
 		}
 
-        public static bool CheckEncrypted(NetState ns, int packetID)
-        {
-            if (ns.SentFirstPacket || !CheckEncrypted(packetID))
-            {
-                return false;
-            }
+		public static bool CheckEncrypted(NetState ns, int packetID)
+		{
+			if (ns.SentFirstPacket)
+			{
+				return false;
+			}
 
-            Utility.PushColor(ConsoleColor.Red);
-            Console.WriteLine("Client: {0}: Encrypted Client Unsupported", ns);
-            Utility.PopColor();
+			switch (packetID)
+			{
+				case 0xF0:
+				case 0xF1:
+				case 0xCF:
+				case 0x80:
+				case 0x91:
+				case 0xA4:
+				case 0xEF:
+				case 0xE4:
+				case 0xFF:
+				{
+					return false;
+				}
+			}
 
-            ns.Dispose();
+			Utility.WriteLine(ConsoleColor.Red, $"Client: {ns}: Encrypted Client Unsupported");
 
-            return true;
-        }
+			ns.Dispose();
 
-        public static bool CheckEncrypted(int packetID)
-        {
-            return packetID != 0xF0
-                && packetID != 0xF1
-                && packetID != 0xCF
-                && packetID != 0x80
-                && packetID != 0x91
-                && packetID != 0xA4
-                && packetID != 0xEF
-                && packetID != 0xE4
-                && packetID != 0xFF;
+			return true;
 		}
 
-        public static void HandleReceive(NetState ns)
+		public void HandleReceive(NetState ns)
 		{
-			ByteQueue buffer = ns.Buffer;
+			var queue = ns.Buffer;
+			var slice = ns.BufferSlice;
 
-			if (buffer == null || buffer.Length <= 0)
+			if (queue == null || slice == null)
 			{
 				return;
 			}
 
-			lock (buffer)
+			var buffer = slice.Length > 0 ? slice : queue;
+
+			if (buffer.Length <= 0)
+			{
+				return;
+			}
+
+			lock (queue)
 			{
 				if (!ns.Seeded && !HandleSeed(ns, buffer))
 				{
 					return;
 				}
 
-				int length = buffer.Length;
+				var length = buffer.Length;
 
 				while (length > 0 && ns.Running)
 				{
-					int packetID = buffer.GetPacketID();
+					var packetID = buffer.GetPacketID();
 
 					if (CheckEncrypted(ns, packetID))
 					{
 						return;
 					}
 
-					PacketHandler handler = ns.GetHandler(packetID);
+					var handler = ns.GetHandler(packetID);
 
 					if (handler == null)
 					{
 #if DEBUG
-                        var data = new byte[length];
+						var data = new byte[length];
 						length = buffer.Dequeue(data, 0, length);
 						new PacketReader(data, length, false).Trace(ns);
 #else
-                        buffer.Dequeue(null, 0, length);
+						length = buffer.Dequeue(null, 0, length);
 #endif
-                        return;
+						return;
 					}
 
-					int packetLength = handler.Length;
+					var remainLength = 0;
+					var packetLength = handler.Length;
 
 					if (packetLength <= 0)
 					{
-						if (length >= 3)
+						remainLength = 3;
+
+						if (length >= remainLength)
 						{
 							packetLength = buffer.GetPacketLength();
 
-							if (packetLength < 3)
+							if (packetLength < remainLength)
 							{
 								ns.Dispose();
 								return;
 							}
-						}
-						else
-						{
-							return;
+
+							remainLength = packetLength - length;
 						}
 					}
 
-					if (length < packetLength)
+					if (remainLength > 0)
 					{
+						if (buffer == slice)
+						{
+							_ = queue.CopyTo(slice, remainLength);
+						}
+
 						return;
 					}
 
@@ -273,41 +290,37 @@ namespace Server.Network
 					{
 						if (ns.Mobile == null)
 						{
-							Utility.PushColor(ConsoleColor.Red);
-							Console.WriteLine("Client: {0}: Packet (0x{1:X2}) Requires State Mobile", ns, packetID);
-							Utility.PopColor();
+							Utility.WriteLine(ConsoleColor.Red, $"Client: {ns}: Packet (0x{packetID:X2}) Requires State Mobile");
 
 							ns.Dispose();
+
 							return;
 						}
 
 						if (ns.Mobile.Deleted)
 						{
-							Utility.PushColor(ConsoleColor.Red);
-							Console.WriteLine("Client: {0}: Packet (0x{1:X2}) Ivalid State Mobile", ns, packetID);
-							Utility.PopColor();
+							Utility.WriteLine(ConsoleColor.Red, $"Client: {ns}: Packet (0x{packetID:X2}) Ivalid State Mobile");
 
 							ns.Dispose();
+
 							return;
 						}
 					}
 
-					ThrottlePacketCallback throttler = handler.ThrottleCallback;
+					var throttler = handler.ThrottleCallback;
 
 					if (throttler != null)
 					{
-						bool drop;
-
-						if (!throttler((byte)packetID, ns, out drop))
+						if (!throttler(packetID, ns, out var drop))
 						{
 							if (!drop)
 							{
 								m_Throttled.Enqueue(ns);
 							}
-                            else
-                            {
-                                buffer.Dequeue(null, 0, packetLength);
-                            }
+							else
+							{
+								_ = buffer.Dequeue(null, 0, packetLength);
+							}
 
 							return;
 						}
@@ -327,7 +340,7 @@ namespace Server.Network
 
 					byte[] packetBuffer;
 
-					if (BufferSize >= packetLength)
+					if (packetLength < BufferSize)
 					{
 						packetBuffer = m_Buffers.AcquireBuffer();
 					}
@@ -340,15 +353,62 @@ namespace Server.Network
 
 					if (packetBuffer != null && packetBuffer.Length > 0 && packetLength > 0)
 					{
-						PacketReader r = new PacketReader(packetBuffer, packetLength, handler.Length != 0);
+						var reader = false;
+						var handle = false;
 
-						handler.OnReceive(ns, r);
-
-                        ns.SetPacketTime((byte)packetID);
-
-						if (BufferSize >= packetLength)
+						try
 						{
-							m_Buffers.ReleaseBuffer(packetBuffer);
+							var r = new PacketReader(packetBuffer, packetLength, handler.Length != 0);
+
+							reader = true;
+
+							handler.OnReceive(ns, r);
+
+							handle = true;
+
+							if (r.Chop > 0)
+							{
+								if (buffer != slice)
+								{
+									slice.Enqueue(packetBuffer, r.Index, r.Chop);
+								}
+								else
+								{
+									Utility.WriteLine(ConsoleColor.Red, $"Client: {ns}: Packet (0x{packetID:X2}) sliced more than once");
+
+									ns.Dispose();
+
+									return;
+								}
+							}
+							else
+							{
+								ns.SetPacketTime(packetID);
+							}
+						}
+						catch (Exception ex)
+						{
+							ExceptionLogging.LogException(ex);
+
+							if (!reader)
+							{
+								Utility.WriteLine(ConsoleColor.Red, $"Client: {ns}: Packet (0x{packetID:X2}) reader fatal exception");
+							}
+							else if (!handle)
+							{
+								Utility.WriteLine(ConsoleColor.Red, $"Client: {ns}: Packet (0x{packetID:X2}) handler fatal exception");
+							}
+
+							ns.Dispose();
+
+							return;
+						}
+						finally
+						{
+							if (BufferSize >= packetLength)
+							{
+								m_Buffers.ReleaseBuffer(ref packetBuffer);
+							}
 						}
 					}
 

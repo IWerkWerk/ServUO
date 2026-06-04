@@ -1,7 +1,9 @@
 #region References
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 using Server.Diagnostics;
@@ -33,6 +35,8 @@ namespace Server
 
 	public delegate void TimerStateCallback<in T1, in T2, in T3, in T4>(T1 state1, T2 state2, T3 state3, T4 state4);
 
+	public delegate void TimerStateCallback<in T1, in T2, in T3, in T4, in T5>(T1 state1, T2 state2, T3 state3, T4 state4, T5 state5);
+
 	public class Timer
 	{
 		private long m_Next;
@@ -62,12 +66,12 @@ namespace Server
 
 		public static void DumpInfo(TextWriter tw)
 		{
-			TimerThread.DumpInfo2(tw);
+			TimerThread.Dump(tw);
 		}
 
 		public TimerPriority Priority
 		{
-			get { return m_Priority; }
+			get => m_Priority;
 			set
 			{
 				if (!m_PrioritySet)
@@ -89,27 +93,23 @@ namespace Server
 			}
 		}
 
-		public DateTime Next
-		{
-			// Obnoxious
-			get { return DateTime.UtcNow.AddMilliseconds(m_Next - Core.TickCount); }
-		}
+		public DateTime Next => DateTime.UtcNow.AddMilliseconds(m_Next - Core.TickCount);
 
 		public TimeSpan Delay
 		{
-			get { return TimeSpan.FromMilliseconds(m_Delay); }
-			set { m_Delay = (long)value.TotalMilliseconds; }
+			get => TimeSpan.FromMilliseconds(m_Delay);
+			set => m_Delay = (long)value.TotalMilliseconds;
 		}
 
 		public TimeSpan Interval
 		{
-			get { return TimeSpan.FromMilliseconds(m_Interval); }
-			set { m_Interval = (long)value.TotalMilliseconds; }
+			get => TimeSpan.FromMilliseconds(m_Interval);
+			set => m_Interval = (long)value.TotalMilliseconds;
 		}
 
 		public bool Running
 		{
-			get { return m_Running; }
+			get => m_Running;
 			set
 			{
 				if (value)
@@ -130,58 +130,75 @@ namespace Server
 
 		public class TimerThread
 		{
-			private static readonly Dictionary<Timer, TimerChangeEntry> m_Changed = new Dictionary<Timer, TimerChangeEntry>();
+			private static readonly ConcurrentDictionary<Timer, TimerChangeEntry> m_Changed = new ConcurrentDictionary<Timer, TimerChangeEntry>();
 
 			private static readonly long[] m_NextPriorities = new long[8];
 			private static readonly long[] m_PriorityDelays = { 0, 10, 25, 50, 250, 1000, 5000, 60000 };
 
 			private static readonly List<Timer>[] m_Timers =
 			{
-				new List<Timer>(), new List<Timer>(), new List<Timer>(),
-				new List<Timer>(), new List<Timer>(), new List<Timer>(), new List<Timer>(), new List<Timer>()
+				new List<Timer>(), new List<Timer>(), new List<Timer>(), new List<Timer>(),
+				new List<Timer>(), new List<Timer>(), new List<Timer>(), new List<Timer>()
 			};
 
-			public static void DumpInfo2(TextWriter tw)
+			private static readonly Dictionary<string, int>[] m_Dump = new Dictionary<string, int>[m_Timers.Length];
+
+			private static DateTime m_Dumped;
+
+			public static void Dump(TextWriter tw)
 			{
-				for (var i = 0; i < 8; ++i)
+				var now = DateTime.UtcNow;
+
+				tw.WriteLine($"Date: {now}");
+
+				if (m_Dumped > DateTime.MinValue)
 				{
-					tw.WriteLine("Priority: {0}", (TimerPriority)i);
+					tw.WriteLine($"Last: {m_Dumped}");
+					tw.WriteLine($"Span: {now - m_Dumped}");
+				}
+
+				tw.WriteLine();
+				tw.WriteLine();
+
+				for (var i = 0; i < m_Timers.Length; i++)
+				{
+					tw.WriteLine($"Priority: {(TimerPriority)i}");
 					tw.WriteLine();
 
-					var hash = new Dictionary<string, List<Timer>>();
+					var total = (double)m_Timers[i].Count;
 
-					for (var j = 0; j < m_Timers[i].Count; ++j)
+					var timers = m_Timers[i].GroupBy(t => t.ToString()).ToDictionary(o => o.Key, o => o.Count());
+
+					foreach (var o in timers.OrderByDescending(o => o.Value))
 					{
-						var t = m_Timers[i][j];
+						var name = o.Key;
+						var count = o.Value;
+						var percent = count / total;
 
-						var key = t.ToString();
+						var line = $"{count:#,0} ({percent:P1})";
 
-						List<Timer> list;
-						hash.TryGetValue(key, out list);
-
-						if (list == null)
+						if (m_Dump[i] != null && m_Dump[i].TryGetValue(o.Key, out var lastCount))
 						{
-							hash[key] = list = new List<Timer>();
+							var diff = count - lastCount;
+
+							if (diff > 0)
+								line += $" [+{diff:#,0}]";
+							else if (diff < 0)
+								line += $" [{diff:#,0}]";
 						}
 
-						list.Add(t);
+						var tabs = new string('\t', 6 - (line.Length / 8));
+
+						tw.WriteLine($"{line}{tabs}{name}");
 					}
 
-					foreach (var kv in hash)
-					{
-						var key = kv.Key;
-						var list = kv.Value;
-
-						tw.WriteLine(
-							"Type: {0}; Count: {1}; Percent: {2}%",
-							key,
-							list.Count,
-							(int)(100 * (list.Count / (double)m_Timers[i].Count)));
-					}
+					m_Dump[i] = timers;
 
 					tw.WriteLine();
 					tw.WriteLine();
 				}
+
+				m_Dumped = now;
 			}
 
 			private class TimerChangeEntry
@@ -202,30 +219,17 @@ namespace Server
 				{
 					m_Timer = null;
 
-					lock (m_InstancePool)
+					if (m_InstancePool.Count < 512) // Arbitrary
 					{
-						if (m_InstancePool.Count < 512) // Arbitrary
-						{
-							m_InstancePool.Enqueue(this);
-						}
+						m_InstancePool.Enqueue(this);
 					}
 				}
 
-				private static readonly Queue<TimerChangeEntry> m_InstancePool = new Queue<TimerChangeEntry>();
+				private static readonly ConcurrentQueue<TimerChangeEntry> m_InstancePool = new ConcurrentQueue<TimerChangeEntry>();
 
 				public static TimerChangeEntry GetInstance(Timer t, int newIndex, bool isAdd)
 				{
-					TimerChangeEntry e = null;
-
-					lock (m_InstancePool)
-					{
-						if (m_InstancePool.Count > 0)
-						{
-							e = m_InstancePool.Dequeue();
-						}
-					}
-
-					if (e != null)
+					if (m_InstancePool.TryDequeue(out var e))
 					{
 						e.m_Timer = t;
 						e.m_NewIndex = newIndex;
@@ -311,7 +315,7 @@ namespace Server
 				m_Signal.Set();
 			}
 
-			public void TimerMain()
+			public static void TimerMain()
 			{
 				long now;
 				int i, j;
@@ -351,10 +355,7 @@ namespace Server
 
 							t.m_Queued = true;
 
-							lock (m_Queue)
-							{
-								m_Queue.Enqueue(t);
-							}
+							m_Queue.Enqueue(t);
 
 							loaded = true;
 
@@ -379,41 +380,36 @@ namespace Server
 			}
 		}
 
-		private static readonly Queue<Timer> m_Queue = new Queue<Timer>();
+		private static readonly ConcurrentQueue<Timer> m_Queue = new ConcurrentQueue<Timer>();
+
 		private static int m_BreakCount = 20000;
 
-		public static int BreakCount { get { return m_BreakCount; } set { m_BreakCount = value; } }
-
-		private static int m_QueueCountAtSlice;
+		public static int BreakCount { get => m_BreakCount; set => m_BreakCount = value; }
 
 		private bool m_Queued;
 
 		public static void Slice()
 		{
-			lock (m_Queue)
+			var index = 0;
+
+			while (index < m_BreakCount && m_Queue.TryDequeue(out var t))
 			{
-				m_QueueCountAtSlice = m_Queue.Count;
+				var prof = t.GetProfile();
 
-				var index = 0;
-
-				while (index < m_BreakCount && m_Queue.Count != 0)
+				if (prof != null)
 				{
-					var t = m_Queue.Dequeue();
-					var prof = t.GetProfile();
+					prof.Start();
+				}
 
-					if (prof != null)
-					{
-						prof.Start();
-					}
+				t.OnTick();
 
-					t.OnTick();
-					t.m_Queued = false;
-					++index;
+				t.m_Queued = false;
 
-					if (prof != null)
-					{
-						prof.Finish();
-					}
+				++index;
+
+				if (prof != null)
+				{
+					prof.Finish();
 				}
 			}
 		}
@@ -426,7 +422,7 @@ namespace Server
 			: this(delay, interval, 0)
 		{ }
 
-		public virtual bool DefRegCreation { get { return true; } }
+		public virtual bool DefRegCreation => true;
 
 		public void RegCreation()
 		{
@@ -472,7 +468,7 @@ namespace Server
 				return TimerPriority.OneMinute;
 			}
 
-			if (ts.TotalMinutes >= 1.0)
+			if (ts.TotalSeconds >= 30.0)
 			{
 				return TimerPriority.FiveSeconds;
 			}
@@ -677,14 +673,43 @@ namespace Server
 		}
 		#endregion
 
+		#region DelayCall<T1, T2, T3, T4, T5>(..)
+		public static Timer DelayCall<T1, T2, T3, T4, T5>(TimerStateCallback<T1, T2, T3, T4, T5> callback, T1 state1, T2 state2, T3 state3, T4 state4, T5 state5)
+		{
+			return DelayCall(TimeSpan.Zero, TimeSpan.Zero, 1, callback, state1, state2, state3, state4, state5);
+		}
+
+		public static Timer DelayCall<T1, T2, T3, T4, T5>(TimeSpan delay, TimerStateCallback<T1, T2, T3, T4, T5> callback, T1 state1, T2 state2, T3 state3, T4 state4, T5 state5)
+		{
+			return DelayCall(delay, TimeSpan.Zero, 1, callback, state1, state2, state3, state4, state5);
+		}
+
+		public static Timer DelayCall<T1, T2, T3, T4, T5>(TimeSpan delay, TimeSpan interval, TimerStateCallback<T1, T2, T3, T4, T5> callback, T1 state1, T2 state2, T3 state3, T4 state4, T5 state5)
+		{
+			return DelayCall(delay, interval, 0, callback, state1, state2, state3, state4, state5);
+		}
+
+		public static Timer DelayCall<T1, T2, T3, T4, T5>(TimeSpan delay, TimeSpan interval, int count, TimerStateCallback<T1, T2, T3, T4, T5> callback, T1 state1, T2 state2, T3 state3, T4 state4, T5 state5)
+		{
+			Timer t = new DelayStateCallTimer<T1, T2, T3, T4, T5>(delay, interval, count, callback, state1, state2, state3, state4, state5)
+			{
+				Priority = ComputePriority(count == 1 ? delay : interval)
+			};
+
+			t.Start();
+
+			return t;
+		}
+		#endregion
+
 		#region DelayCall Timers
 		private class DelayCallTimer : Timer
 		{
 			private readonly TimerCallback m_Callback;
 
-			public TimerCallback Callback { get { return m_Callback; } }
+			public TimerCallback Callback => m_Callback;
 
-			public override bool DefRegCreation { get { return false; } }
+			public override bool DefRegCreation => false;
 
 			public DelayCallTimer(TimeSpan delay, TimeSpan interval, int count, TimerCallback callback)
 				: base(delay, interval, count)
@@ -695,10 +720,7 @@ namespace Server
 
 			protected override void OnTick()
 			{
-				if (m_Callback != null)
-				{
-					m_Callback();
-				}
+				m_Callback?.Invoke();
 			}
 
 			public override string ToString()
@@ -712,9 +734,9 @@ namespace Server
 			private readonly TimerStateCallback m_Callback;
 			private readonly object m_State;
 
-			public TimerStateCallback Callback { get { return m_Callback; } }
+			public TimerStateCallback Callback => m_Callback;
 
-			public override bool DefRegCreation { get { return false; } }
+			public override bool DefRegCreation => false;
 
 			public DelayStateCallTimer(TimeSpan delay, TimeSpan interval, int count, TimerStateCallback callback, object state)
 				: base(delay, interval, count)
@@ -727,10 +749,7 @@ namespace Server
 
 			protected override void OnTick()
 			{
-				if (m_Callback != null)
-				{
-					m_Callback(m_State);
-				}
+				m_Callback?.Invoke(m_State);
 			}
 
 			public override string ToString()
@@ -744,9 +763,9 @@ namespace Server
 			private readonly TimerStateCallback<T> m_Callback;
 			private readonly T m_State;
 
-			public TimerStateCallback<T> Callback { get { return m_Callback; } }
+			public TimerStateCallback<T> Callback => m_Callback;
 
-			public override bool DefRegCreation { get { return false; } }
+			public override bool DefRegCreation => false;
 
 			public DelayStateCallTimer(TimeSpan delay, TimeSpan interval, int count, TimerStateCallback<T> callback, T state)
 				: base(delay, interval, count)
@@ -759,10 +778,7 @@ namespace Server
 
 			protected override void OnTick()
 			{
-				if (m_Callback != null)
-				{
-					m_Callback(m_State);
-				}
+				m_Callback?.Invoke(m_State);
 			}
 
 			public override string ToString()
@@ -777,9 +793,9 @@ namespace Server
 			private readonly T1 m_State1;
 			private readonly T2 m_State2;
 
-			public TimerStateCallback<T1, T2> Callback { get { return m_Callback; } }
+			public TimerStateCallback<T1, T2> Callback => m_Callback;
 
-			public override bool DefRegCreation { get { return false; } }
+			public override bool DefRegCreation => false;
 
 			public DelayStateCallTimer(TimeSpan delay, TimeSpan interval, int count, TimerStateCallback<T1, T2> callback, T1 state1, T2 state2)
 				: base(delay, interval, count)
@@ -793,10 +809,7 @@ namespace Server
 
 			protected override void OnTick()
 			{
-				if (m_Callback != null)
-				{
-					m_Callback(m_State1, m_State2);
-				}
+				m_Callback?.Invoke(m_State1, m_State2);
 			}
 
 			public override string ToString()
@@ -812,9 +825,9 @@ namespace Server
 			private readonly T2 m_State2;
 			private readonly T3 m_State3;
 
-			public TimerStateCallback<T1, T2, T3> Callback { get { return m_Callback; } }
+			public TimerStateCallback<T1, T2, T3> Callback => m_Callback;
 
-			public override bool DefRegCreation { get { return false; } }
+			public override bool DefRegCreation => false;
 
 			public DelayStateCallTimer(TimeSpan delay, TimeSpan interval, int count, TimerStateCallback<T1, T2, T3> callback, T1 state1, T2 state2, T3 state3)
 				: base(delay, interval, count)
@@ -829,10 +842,7 @@ namespace Server
 
 			protected override void OnTick()
 			{
-				if (m_Callback != null)
-				{
-					m_Callback(m_State1, m_State2, m_State3);
-				}
+				m_Callback?.Invoke(m_State1, m_State2, m_State3);
 			}
 
 			public override string ToString()
@@ -849,9 +859,9 @@ namespace Server
 			private readonly T3 m_State3;
 			private readonly T4 m_State4;
 
-			public TimerStateCallback<T1, T2, T3, T4> Callback { get { return m_Callback; } }
+			public TimerStateCallback<T1, T2, T3, T4> Callback => m_Callback;
 
-			public override bool DefRegCreation { get { return false; } }
+			public override bool DefRegCreation => false;
 
 			public DelayStateCallTimer(TimeSpan delay, TimeSpan interval, int count, TimerStateCallback<T1, T2, T3, T4> callback, T1 state1, T2 state2, T3 state3, T4 state4)
 				: base(delay, interval, count)
@@ -867,10 +877,44 @@ namespace Server
 
 			protected override void OnTick()
 			{
-				if (m_Callback != null)
-				{
-					m_Callback(m_State1, m_State2, m_State3, m_State4);
-				}
+				m_Callback?.Invoke(m_State1, m_State2, m_State3, m_State4);
+			}
+
+			public override string ToString()
+			{
+				return String.Format("DelayStateCall[{0}]", FormatDelegate(m_Callback));
+			}
+		}
+
+		private class DelayStateCallTimer<T1, T2, T3, T4, T5> : Timer
+		{
+			private readonly TimerStateCallback<T1, T2, T3, T4, T5> m_Callback;
+			private readonly T1 m_State1;
+			private readonly T2 m_State2;
+			private readonly T3 m_State3;
+			private readonly T4 m_State4;
+			private readonly T5 m_State5;
+
+			public TimerStateCallback<T1, T2, T3, T4, T5> Callback => m_Callback;
+
+			public override bool DefRegCreation => false;
+
+			public DelayStateCallTimer(TimeSpan delay, TimeSpan interval, int count, TimerStateCallback<T1, T2, T3, T4, T5> callback, T1 state1, T2 state2, T3 state3, T4 state4, T5 state5)
+				: base(delay, interval, count)
+			{
+				m_Callback = callback;
+				m_State1 = state1;
+				m_State2 = state2;
+				m_State3 = state3;
+				m_State4 = state4;
+				m_State5 = state5;
+
+				RegCreation();
+			}
+
+			protected override void OnTick()
+			{
+				m_Callback?.Invoke(m_State1, m_State2, m_State3, m_State4, m_State5);
 			}
 
 			public override string ToString()

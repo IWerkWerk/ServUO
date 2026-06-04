@@ -1,23 +1,20 @@
-using System;
-using System.Collections.Generic;
 using Server.ContextMenus;
-using Server.Multis;
-using Server.Mobiles;
 using Server.Gumps;
+using Server.Mobiles;
+using Server.Multis;
+using System.Collections.Generic;
 
 namespace Server.Items
 {
     public class CustomizableSquaredDoorMatAddon : BaseAddon, ICustomizableMessageItem
-    {
-        public string[] Lines { get; set; }
+	{
+		public string[] Lines => TooltipsBase;
 
-        public override BaseAddonDeed Deed { get { return new CustomizableSquaredDoorMatDeed(); } }
+		public override BaseAddonDeed Deed => new CustomizableSquaredDoorMatDeed();
 
         [Constructable]
         public CustomizableSquaredDoorMatAddon(DirectionType type)
         {
-            Lines = new string[3];
-            
             switch (type)
             {
                 case DirectionType.South:
@@ -39,29 +36,29 @@ namespace Server.Items
         public override void Serialize(GenericWriter writer)
         {
             base.Serialize(writer);
-            writer.Write((int)0); // version
 
-            writer.Write((int)Lines.Length);
-
-            for (int i = 0; i < Lines.Length; i++)
-                writer.Write((string)Lines[i]);
+            writer.Write(1); // version
         }
 
         public override void Deserialize(GenericReader reader)
         {
             base.Deserialize(reader);
+
             int version = reader.ReadInt();
 
-            Lines = new string[reader.ReadInt()];
+			if (version < 1)
+			{
+				int lines = reader.ReadInt();
 
-            for (int i = 0; i < Lines.Length; i++)
-                Lines[i] = reader.ReadString();
+				for (int i = 0; i < lines && i < Lines.Length; i++)
+					Lines[i] = reader.ReadString();
+			}
         }
     }
 
     public class CustomizableSquaredDoorMatComponent : LocalizedAddonComponent
     {
-        public override bool ForceShowProperties { get { return true; } }
+        public override bool ForceShowProperties => true;
 
         public CustomizableSquaredDoorMatComponent(int id)
             : base(id, 1097996) // door mat
@@ -121,11 +118,11 @@ namespace Server.Items
 
     public class CustomizableSquaredDoorMatDeed : BaseAddonDeed, IRewardOption
     {
-        public override BaseAddon Addon { get { return new CustomizableSquaredDoorMatAddon(m_CustomizableSquaredDoorMatType); } }
+        public override BaseAddon Addon => new CustomizableSquaredDoorMatAddon(m_CustomizableSquaredDoorMatType);
 
         private DirectionType m_CustomizableSquaredDoorMatType;
 
-        public override int LabelNumber { get { return 1151806; } } // squared door mat deed
+        public override int LabelNumber => 1151806;  // squared door mat deed
 
         [Constructable]
         public CustomizableSquaredDoorMatDeed()
@@ -154,7 +151,7 @@ namespace Server.Items
         public override void Serialize(GenericWriter writer)
         {
             base.Serialize(writer);
-            writer.Write((int)0); // version
+            writer.Write(0); // version
         }
 
         public override void Deserialize(GenericReader reader)
@@ -176,5 +173,5 @@ namespace Server.Items
             if (!Deleted)
                 base.OnDoubleClick(from);
         }
-    }    
+    }
 }

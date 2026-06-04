@@ -24,11 +24,15 @@ namespace Server
 {
 	public interface IVendor
 	{
+		IShopSellInfo[] GetSellInfo();
+		IBuyItemInfo[] GetBuyInfo();
+
 		bool OnBuyItems(Mobile from, List<BuyItemResponse> list);
 		bool OnSellItems(Mobile from, List<SellItemResponse> list);
 
 		DateTime LastRestock { get; set; }
 		TimeSpan RestockDelay { get; }
+
 		void Restock();
 	}
 
@@ -52,7 +56,7 @@ namespace Server
 	{
 		int MaxRange { get; }
 		void OnBeforeSwing(Mobile attacker, IDamageable damageable);
-        TimeSpan OnSwing(Mobile attacker, IDamageable damageable);
+		TimeSpan OnSwing(Mobile attacker, IDamageable damageable);
 		void GetStatusDamage(Mobile from, out int min, out int max);
 		TimeSpan GetDelay(Mobile attacker);
 	}
@@ -70,7 +74,7 @@ namespace Server
 		void OnCasterKilled();
 		void OnConnectionChanged();
 		bool OnCasterMoving(Direction d);
-        bool CheckMovement(Mobile caster);
+		bool CheckMovement(Mobile caster);
 		bool OnCasterEquiping(Item item);
 		bool OnCasterUsingObject(object o);
 		bool OnCastInTown(Region r);
@@ -104,42 +108,83 @@ namespace Server
 		ISpawner Spawner { get; set; }
 	}
 
-    public interface IDamageable : IEntity
-    {
-        int Hits { get; set; }
-        int HitsMax { get; }
-        bool Alive { get; }
+	public interface IDamageable : IEntity
+	{
+		bool Invulnerable { get; set; }
 
-        int PhysicalResistance { get; }
-        int FireResistance { get; }
-        int ColdResistance { get; }
-        int PoisonResistance { get; }
-        int EnergyResistance { get; }
+		int Hits { get; set; }
+		int HitsMax { get; }
+		bool Alive { get; }
+
+		int PhysicalResistance { get; }
+		int FireResistance { get; }
+		int ColdResistance { get; }
+		int PoisonResistance { get; }
+		int EnergyResistance { get; }
 
 		int Damage(int amount, Mobile attacker);
 
-        void PlaySound(int soundID);
-		
-        void MovingEffect(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int hue, int renderMode);
-        void MovingEffect(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes);
+		int ComputeNotoriety(Mobile viewer);
 
-        void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int hue, int renderMode, int effect, int explodeEffect, int explodeSound, EffectLayer layer, int unknown);
-        void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int hue, int renderMode, int effect, int explodeEffect, int explodeSound, int unknown);
-        void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int effect, int explodeEffect, int explodeSound, int unknown);
-        void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int effect, int explodeEffect, int explodeSound);
+		void PlaySound(int soundID);
 
-        void FixedEffect(int itemID, int speed, int duration, int hue, int renderMode);
-        void FixedEffect(int itemID, int speed, int duration);
+		void MovingEffect(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int hue, int renderMode);
+		void MovingEffect(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes);
 
-        void FixedParticles(int itemID, int speed, int duration, int effect, int hue, int renderMode, EffectLayer layer, int unknown);
-        void FixedParticles(int itemID, int speed, int duration, int effect, int hue, int renderMode, EffectLayer layer);
-        void FixedParticles(int itemID, int speed, int duration, int effect, EffectLayer layer, int unknown);
-        void FixedParticles(int itemID, int speed, int duration, int effect, EffectLayer layer);
-        void BoltEffect(int hue);
-    }
+		void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int hue, int renderMode, int effect, int explodeEffect, int explodeSound, EffectLayer layer, int unknown);
+		void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int hue, int renderMode, int effect, int explodeEffect, int explodeSound, int unknown);
+		void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int effect, int explodeEffect, int explodeSound, int unknown);
+		void MovingParticles(IEntity to, int itemID, int speed, int duration, bool fixedDirection, bool explodes, int effect, int explodeEffect, int explodeSound);
 
-    public interface IArtifact
-    {
-        int ArtifactRarity { get; }
-    }
+		void FixedEffect(int itemID, int speed, int duration, int hue, int renderMode);
+		void FixedEffect(int itemID, int speed, int duration);
+
+		void FixedParticles(int itemID, int speed, int duration, int effect, int hue, int renderMode, EffectLayer layer, int unknown);
+		void FixedParticles(int itemID, int speed, int duration, int effect, int hue, int renderMode, EffectLayer layer);
+		void FixedParticles(int itemID, int speed, int duration, int effect, EffectLayer layer, int unknown);
+		void FixedParticles(int itemID, int speed, int duration, int effect, EffectLayer layer);
+		void BoltEffect(int hue);
+	}
+
+	public interface IArtifact
+	{
+		int ArtifactRarity { get; }
+	}
+
+	public interface ISpellbook
+	{
+		int BookOffset { get; }
+		int BookCount { get; }
+
+		int SpellCount { get; }
+
+		ulong Content { get; set; }
+
+		void DisplayTo(Mobile to);
+	}
+
+	public interface ITamable : IEntity
+	{
+		bool IsDeadPet { get; }
+
+		bool Tamable { get; set; }
+
+		bool Controlled { get; set; }
+
+		double MinTameSkill { get; set; }
+
+		int ControlSlots { get; set; }
+
+		Mobile ControlMaster { get; set; }
+
+		Point3D ControlDest { get; set; }
+
+		IDamageable ControlTarget { get; set; }
+	}
+
+	public interface ILockable
+	{
+		bool Locked { get; set; }
+		uint KeyValue { get; set; }
+	}
 }

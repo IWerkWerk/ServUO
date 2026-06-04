@@ -1,6 +1,4 @@
-#region References
 using Server.Network;
-#endregion
 
 namespace Server.Gumps
 {
@@ -10,7 +8,7 @@ namespace Server.Gumps
 
 		public Gump Parent
 		{
-			get { return _Parent; }
+			get => _Parent;
 			set
 			{
 				if (_Parent == value)

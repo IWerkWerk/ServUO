@@ -1,138 +1,139 @@
-using Server;
-using Server.Engines.CityLoyalty;
-using Server.Gumps;
-using Server.ContextMenus;
-using Server.Guilds;
-using Server.Mobiles;
-using Server.Engines.Quests;
 using Server.Commands;
+using Server.ContextMenus;
+using Server.Engines.CityLoyalty;
 using Server.Engines.Khaldun;
+using Server.Engines.Quests;
+using Server.Guilds;
+using Server.Gumps;
 using Server.Items;
-
+using Server.Mobiles;
 using System;
-using System.IO;
-using System.Text;
-using System.Xml;
-using System.Globalization;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Xml;
 
 namespace Server.Services.TownCryer
 {
     public static class TownCryerSystem
     {
-        public static bool Enabled { get; set; }
+        public static bool Enabled
+		{
+			get => Config.Get("TownCrier.Enabled", Core.TOL);
+			set
+			{
+				Config.Set("TownCrier.Enabled", value);
 
-        public static readonly int MaxNewsEntries = 100;
-        public static readonly int MaxPerGuildEntries = 1;
-        public static readonly int MaxPerCityGoverrnorEntries = 5;
-        public static readonly int MaxEMEntries = 15;
-        public static readonly int MinGuildMemberCount = 20;
+				Initialize();
+			}
+		}
 
-        public static bool UsePreloadedMessages = false;
-        public static AccessLevel EMAccess = AccessLevel.Counselor;
-        public static readonly string EMEventsPage = "https://uo.com/live-events/";
+		public static int MaxNewsEntries { get => Config.Get("TownCrier.MaxNewsEntries", 100); set => Config.Set("TownCrier.MaxNewsEntries", value); }
+        public static int MaxPerGuildEntries { get => Config.Get("TownCrier.MaxPerGuildEntries", 1); set => Config.Set("TownCrier.MaxPerGuildEntries", value); }
 
-        private static string PreLoadedPath = "Data/PreLoadedTC.xml";
+        public static int MaxPerCityGovernorEntries { get => Config.Get("TownCrier.MaxPerCityGovernorEntries", 5); set => Config.Set("TownCrier.MaxPerCityGovernorEntries", value); }
+        public static int MaxEMEntries { get => Config.Get("TownCrier.MaxEMEntries", 15); set => Config.Set("TownCrier.MaxEMEntries", value); }
+        public static int MinGuildMemberCount { get => Config.Get("TownCrier.MinGuildMemberCount", 20); set => Config.Set("TownCrier.MinGuildMemberCount", value); }
 
-        public static List<TownCryerGreetingEntry> GreetingsEntries { get; private set; }
-        //public static List<TextDefinition> GreetingsEntries { get; private set; }
-        public static List<TownCryerNewsEntry> NewsEntries { get; private set; }
-        public static List<TownCryerModeratorEntry> ModeratorEntries { get; private set; }
-        public static List<TownCryerCityEntry> CityEntries { get; private set; }
-        public static List<TownCryerGuildEntry> GuildEntries { get; private set; }
-        public static List<PlayerMobile> TownCryerExempt { get; private set; }
+        public static bool UsePreloadedMessages { get => Config.Get("TownCrier.UsePreloadedMessages", false); set => Config.Set("TownCrier.UsePreloadedMessages", value); }
+        public static AccessLevel EMAccess { get => Config.GetEnum("TownCrier.EMAccess", AccessLevel.Counselor); set => Config.SetEnum("TownCrier.EMAccess", value); }
+        public static string EMEventsPage { get => Config.Get("TownCrier.EMEventsPage", "https://uo.com/live-events/"); set => Config.Set("TownCrier.EMEventsPage", value); }
 
-        public static Dictionary<Mobile, DateTime> MysteriousPotionEffects { get; private set; }
+		private static readonly string PreLoadedPath = Path.Combine(Core.BaseDirectory, "Data", "PreLoadedTC.xml");
+
+		public static List<TownCryerGreetingEntry> GreetingsEntries { get; } = new List<TownCryerGreetingEntry>();
+		public static List<TownCryerNewsEntry> NewsEntries { get; } = new List<TownCryerNewsEntry>();
+		public static List<TownCryerModeratorEntry> ModeratorEntries { get; } = new List<TownCryerModeratorEntry>();
+		public static List<TownCryerCityEntry> CityEntries { get; } = new List<TownCryerCityEntry>();
+		public static List<TownCryerGuildEntry> GuildEntries { get; } = new List<TownCryerGuildEntry>();
+		public static List<PlayerMobile> TownCryerExempt { get; } = new List<PlayerMobile>();
+
+		public static Dictionary<Mobile, DateTime> MysteriousPotionEffects { get; } = new Dictionary<Mobile, DateTime>();
 
         public static Timer Timer { get; private set; }
         public static bool NewGreeting { get; private set; }
 
         public static void Configure()
-        {
-            GreetingsEntries = new List<TownCryerGreetingEntry>();
-            ModeratorEntries = new List<TownCryerModeratorEntry>();
-            CityEntries = new List<TownCryerCityEntry>();
-            GuildEntries = new List<TownCryerGuildEntry>();
-            NewsEntries = new List<TownCryerNewsEntry>();
-            TownCryerExempt = new List<PlayerMobile>();
+		{
+			EventSink.Login += OnLogin;
 
-            GreetingsEntries.Add(new TownCryerGreetingEntry(1158955));
-            /*<center>Rising Tide</center><br><br>The Seas call to us once more! A powerful pirate called Hook has
-             * taken control of the Guild, an organization of cutthroats and brigands engaged in high seas piracy!
-             * Great peril stands in the way of those brave enough to challenge Hook's vile plan - read the latest
-             * headlines in the Town Cryer to learn more!<br><br>The realms tinkers have been busy at work and are
-             * proud to announce advancements in ship to ship ballistics!  The cannon firing process has been streamlined
-             * - from crafting supplies through loading the cannons and lighting the fuse!  FIRE IN THE HOLE!
-             * <br><br>Whether you are celebrating your first year in Britannia or your 22nd we want to extend a
-             * very special thank you to our veteran players!  New veteran rewards are available! New MONSTER STATUETTES
-             * featuring Krampus, Khal Ankur, and the Krampus Minion, are available!  Decorate your home with the WATER
-             * WHEEL and personalize your clothes with the EMBROIDERY TOOL.  Every crafter will want to get their hands
-             * on the REPAIR BENCH and TINKER BENCH!*/
-
-            GreetingsEntries.Add(new TownCryerGreetingEntry(1158757));
-            /*Fall is approaching and strangeness is afoot in Britannia!<br><br>Britannians are looking skyward in 
-             * search of constellations and other celestial objects using the new telescope!<br><br>The pumpkin patches 
-             * of Britannia once again bearing fruit as the Grimms hold their carveable pumpkins close!<br><br>Visit a 
-             * cemetery to battle against the Butchers and carve new Jack o' Lantern designs!<br><br>Beware the 
-             * skeletons! Zombie skeletons roam the cemeteries!<br><br>Trick or Treat? Shopkeepers and citizens 
-             * alike have new treats to share!<br><br>Strange events worth investigating? A new article from the 
-             * Town Cryer on the new Royal Britannian Guard Detective Branch!*/
-
-            GreetingsEntries.Add(new TownCryerGreetingEntry(1158388));
-            /* Greetings, Avatar!<br><br>Welcome to Britannia! Whether these are your first steps or you are a 
-             * seasoned veteran King Blackthorn welcomes you! The realm is bustling with opportunities for adventure!
-             * TownCryers can be visited at all banks and points of interest to learn about the latest goings on in 
-             * the realm. Many guilds are actively recruiting members, so be sure to check the Town Cryer guild 
-             * section for the latest recruitment events. <br><br>We wish you the best of luck in your
-             * <A HREF="https://uo.com/endless-journey/">Endless Journey</A>*/
-
-            LoadPreloadedMessages();
+			CommandSystem.Register("ReloadTCGreetings", AccessLevel.Administrator, Reload_OnCommand);
         }
 
-        public static void Initialize()
-        {
-            if (Enabled)
-            {
-                EventSink.Login += OnLogin;
+		public static void Initialize()
+		{
+			if (Enabled)
+			{
+				GreetingsEntries.Clear();
 
-                NewsEntries.Add(new TownCryerNewsEntry(1159262, 1159263, 0x64E, null, "https://uo.com/wiki/ultima-online-wiki/seasonal-events/halloween-treasures-of-the-sea/")); // Forsaken Foes
-                NewsEntries.Add(new TownCryerNewsEntry(1158944, 1158945, 0x9CEA, null, "https://uo.com/wiki/ultima-online-wiki/combat/pvm-player-versus-monster/rising-tide/")); // Rising Tide
-                NewsEntries.Add(new TownCryerNewsEntry(1158552, 1158553, 0x6CE, typeof(GoingGumshoeQuest), null)); // Going Gumshoe
-                NewsEntries.Add(new TownCryerNewsEntry(1158095, 1158097, 0x61E, null, "https://uo.com/")); // Britain Commons
-                NewsEntries.Add(new TownCryerNewsEntry(1158089, 1158091, 0x60F, null, "https://uo.com/wiki/ultima-online-wiki/gameplay/npc-commercial-transactions/clean-up-britannia/")); // Cleanup Britannia
-                NewsEntries.Add(new TownCryerNewsEntry(1158098, 1158100, 0x615, null, "https://uo.com/wiki/ultima-online-wiki/gameplay/crafting/bulk-orders/")); // New Bulk Orders
-                NewsEntries.Add(new TownCryerNewsEntry(1158101, 1158103, 0x616, null, "https://uo.com/wiki/ultima-online-wiki/a-summary-for-returning-players/weapons-armor-and-loot-revamps-2016/")); // 2016 Loot Revamps
-                NewsEntries.Add(new TownCryerNewsEntry(1158116, 1158118, 0x64F, null, "https://uo.com/wiki/ultima-online-wiki/gameplay/the-virtues/")); // Virtues
-                NewsEntries.Add(new TownCryerNewsEntry(1158083, 1158085, 0x617, typeof(TamingPetQuest), "https://uo.com/wiki/ultima-online-wiki/skills/animal-taming/animal-training/")); // Animal Training
-                NewsEntries.Add(new TownCryerNewsEntry(1158086, 1158088, 0x61D, typeof(ExploringTheDeepQuest), null));
-                NewsEntries.Add(new TownCryerNewsEntry(1158092, 1158094, 0x651, typeof(HuntmastersChallengeQuest), "https://uo.com/wiki/ultima-online-wiki/gameplay/huntmasters-challenge/")); // Huntsmaster Challenge 
-                NewsEntries.Add(new TownCryerNewsEntry(1158104, 1158106, 0x61C, typeof(PaladinsOfTrinsic), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-shame/")); //  New Shame 
-                NewsEntries.Add(new TownCryerNewsEntry(1158107, 1158109, 0x61A, typeof(RightingWrongQuest), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-wrong/")); // New Wrong
+				GreetingsEntries.Add(new TownCryerGreetingEntry(1158955));
+				/*<center>Rising Tide</center><br><br>The Seas call to us once more! A powerful pirate called Hook has
+				 * taken control of the Guild, an organization of cutthroats and brigands engaged in high seas piracy!
+				 * Great peril stands in the way of those brave enough to challenge Hook's vile plan - read the latest
+				 * headlines in the Town Cryer to learn more!<br><br>The realms tinkers have been busy at work and are
+				 * proud to announce advancements in ship to ship ballistics!  The cannon firing process has been streamlined
+				 * - from crafting supplies through loading the cannons and lighting the fuse!  FIRE IN THE HOLE!
+				 * <br><br>Whether you are celebrating your first year in Britannia or your 22nd we want to extend a
+				 * very special thank you to our veteran players!  New veteran rewards are available! New MONSTER STATUETTES
+				 * featuring Krampus, Khal Ankur, and the Krampus Minion, are available!  Decorate your home with the WATER
+				 * WHEEL and personalize your clothes with the EMBROIDERY TOOL.  Every crafter will want to get their hands
+				 * on the REPAIR BENCH and TINKER BENCH!*/
 
-                if (TreasureMapInfo.NewSystem)
-                {
-                    NewsEntries.Add(new TownCryerNewsEntry(1158113, 1158115, 0x64C, typeof(BuriedRichesQuest), "https://uo.com/wiki/ultima-online-wiki/gameplay/treasure-maps/")); // New TMaps
-                }
+				GreetingsEntries.Add(new TownCryerGreetingEntry(1158757));
+				/*Fall is approaching and strangeness is afoot in Britannia!<br><br>Britannians are looking skyward in 
+				 * search of constellations and other celestial objects using the new telescope!<br><br>The pumpkin patches 
+				 * of Britannia once again bearing fruit as the Grimms hold their carveable pumpkins close!<br><br>Visit a 
+				 * cemetery to battle against the Butchers and carve new Jack o' Lantern designs!<br><br>Beware the 
+				 * skeletons! Zombie skeletons roam the cemeteries!<br><br>Trick or Treat? Shopkeepers and citizens 
+				 * alike have new treats to share!<br><br>Strange events worth investigating? A new article from the 
+				 * Town Cryer on the new Royal Britannian Guard Detective Branch!*/
 
-                NewsEntries.Add(new TownCryerNewsEntry(1158119, 1158121, 0x64D, typeof(APleaFromMinocQuest), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-covetous/")); // New Covetous
-                NewsEntries.Add(new TownCryerNewsEntry(1158110, 1158112, 0x64E, typeof(AVisitToCastleBlackthornQuest), "https://uo.com/wiki/ultima-online-wiki/items/artifacts-castle-blackthorn/")); // Castle Blackthorn
-                NewsEntries.Add(new TownCryerNewsEntry(1158122, 1158124, 0x650, typeof(WishesOfTheWispQuest), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-despise-trammel/")); // New Despise
+				GreetingsEntries.Add(new TownCryerGreetingEntry(1158388));
+				/* Greetings, Avatar!<br><br>Welcome to Britannia! Whether these are your first steps or you are a 
+				 * seasoned veteran King Blackthorn welcomes you! The realm is bustling with opportunities for adventure!
+				 * TownCryers can be visited at all banks and points of interest to learn about the latest goings on in 
+				 * the realm. Many guilds are actively recruiting members, so be sure to check the Town Cryer guild 
+				 * section for the latest recruitment events. <br><br>We wish you the best of luck in your
+				 * <A HREF="https://uo.com/endless-journey/">Endless Journey</A>*/
 
-                // New greeting, resets all TC hiding
-                if (NewGreeting)
-                {
-                    TownCryerExempt.Clear();
-                }
+				LoadPreloadedMessages();
 
-                if (UsePreloadedMessages)
-                {
-                    CommandSystem.Register("ReloadTCGreetings", AccessLevel.Administrator, Reload_OnCommand);
-                }
-            }
-        }
+				NewsEntries.Clear();
 
-        public static bool IsExempt(Mobile m)
+				NewsEntries.Add(new TownCryerNewsEntry(1159346, 1159347, 0x9D3E, null, "https://uo.com/wiki/ultima-online-wiki/combat/jolly-roger/")); // Jolly Roger
+				NewsEntries.Add(new TownCryerNewsEntry(1159262, 1159263, 0x64E, null, "https://uo.com/wiki/ultima-online-wiki/seasonal-events/halloween-treasures-of-the-sea/")); // Forsaken Foes
+				NewsEntries.Add(new TownCryerNewsEntry(1158944, 1158945, 0x9CEA, null, "https://uo.com/wiki/ultima-online-wiki/combat/pvm-player-versus-monster/rising-tide/")); // Rising Tide
+				NewsEntries.Add(new TownCryerNewsEntry(1158552, 1158553, 0x6CE, typeof(GoingGumshoeQuest), null)); // Going Gumshoe
+				NewsEntries.Add(new TownCryerNewsEntry(1158095, 1158097, 0x61E, null, "https://uo.com/")); // Britain Commons
+				NewsEntries.Add(new TownCryerNewsEntry(1158089, 1158091, 0x60F, null, "https://uo.com/wiki/ultima-online-wiki/gameplay/npc-commercial-transactions/clean-up-britannia/")); // Cleanup Britannia
+				NewsEntries.Add(new TownCryerNewsEntry(1158098, 1158100, 0x615, null, "https://uo.com/wiki/ultima-online-wiki/gameplay/crafting/bulk-orders/")); // New Bulk Orders
+				NewsEntries.Add(new TownCryerNewsEntry(1158101, 1158103, 0x616, null, "https://uo.com/wiki/ultima-online-wiki/a-summary-for-returning-players/weapons-armor-and-loot-revamps-2016/")); // 2016 Loot Revamps
+				NewsEntries.Add(new TownCryerNewsEntry(1158116, 1158118, 0x64F, null, "https://uo.com/wiki/ultima-online-wiki/gameplay/the-virtues/")); // Virtues
+				NewsEntries.Add(new TownCryerNewsEntry(1158083, 1158085, 0x617, typeof(TamingPetQuest), "https://uo.com/wiki/ultima-online-wiki/skills/animal-taming/animal-training/")); // Animal Training
+				NewsEntries.Add(new TownCryerNewsEntry(1158086, 1158088, 0x61D, typeof(ExploringTheDeepQuest), null));
+				NewsEntries.Add(new TownCryerNewsEntry(1158092, 1158094, 0x651, typeof(HuntmastersChallengeQuest), "https://uo.com/wiki/ultima-online-wiki/gameplay/huntmasters-challenge/")); // Huntsmaster Challenge 
+				NewsEntries.Add(new TownCryerNewsEntry(1158104, 1158106, 0x61C, typeof(PaladinsOfTrinsic), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-shame/")); //  New Shame 
+				NewsEntries.Add(new TownCryerNewsEntry(1158107, 1158109, 0x61A, typeof(RightingWrongQuest), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-wrong/")); // New Wrong
+
+				if (TreasureMapInfo.NewSystem)
+				{
+					NewsEntries.Add(new TownCryerNewsEntry(1158113, 1158115, 0x64C, typeof(BuriedRichesQuest), "https://uo.com/wiki/ultima-online-wiki/gameplay/treasure-maps/")); // New TMaps
+				}
+
+				NewsEntries.Add(new TownCryerNewsEntry(1158119, 1158121, 0x64D, typeof(APleaFromMinocQuest), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-covetous/")); // New Covetous
+				NewsEntries.Add(new TownCryerNewsEntry(1158110, 1158112, 0x64E, typeof(AVisitToCastleBlackthornQuest), "https://uo.com/wiki/ultima-online-wiki/items/artifacts-castle-blackthorn/")); // Castle Blackthorn
+				NewsEntries.Add(new TownCryerNewsEntry(1158122, 1158124, 0x650, typeof(WishesOfTheWispQuest), "https://uo.com/wiki/ultima-online-wiki/world/dungeons/dungeon-despise-trammel/")); // New Despise
+
+				// New greeting, resets all TC hiding
+				if (NewGreeting)
+				{
+					TownCryerExempt.Clear();
+				}
+			}
+		}
+
+		public static bool IsExempt(Mobile m)
         {
             return m is PlayerMobile && TownCryerExempt.Contains((PlayerMobile)m);
         }
@@ -183,9 +184,9 @@ namespace Server.Services.TownCryer
 
         public static void OnLogin(LoginEventArgs e)
         {
-            if (Enabled && e.Mobile is PlayerMobile && !IsExempt(e.Mobile))
+            if (Enabled && e.Mobile is PlayerMobile mobile && !IsExempt(mobile))
             {
-                Timer.DelayCall<PlayerMobile>(TimeSpan.FromSeconds(1), player =>
+                Timer.DelayCall(TimeSpan.FromSeconds(1), player =>
                 {
                     if (HasCustomEntries())
                     {
@@ -193,7 +194,7 @@ namespace Server.Services.TownCryer
                     }
                     else
                     {
-                        IPooledEnumerable eable = player.Map.GetMobilesInRange(player.Location, 25);
+                        IPooledEnumerable eable = player.Map.GetMobilesInRange(player.Location, 20);
 
                         foreach (Mobile m in eable)
                         {
@@ -207,13 +208,13 @@ namespace Server.Services.TownCryer
                         eable.Free();
                     }
 
-                }, (PlayerMobile)e.Mobile);
+                }, mobile);
             }
         }
 
         public static int CityEntryCount(City city)
         {
-            return CityEntries.Where(x => x.City == city).Count();
+            return CityEntries.Count(x => x.City == city);
         }
 
         public static bool HasGuildEntry(Guild g)
@@ -233,7 +234,7 @@ namespace Server.Services.TownCryer
         {
             if (ModeratorEntries.Count > 0 ||
                 CityEntries.Count > 0 ||
-                GuildEntries.Count > 0 || 
+                GuildEntries.Count > 0 ||
                 GreetingsEntries.Any(e => e.Expires != DateTime.MinValue) ||
                 MysteriousPotionEffects != null)
             {
@@ -278,18 +279,13 @@ namespace Server.Services.TownCryer
 
             if (MysteriousPotionEffects != null)
             {
-                var list = new List<Mobile>(MysteriousPotionEffects.Keys);
+                List<Mobile> list = new List<Mobile>(MysteriousPotionEffects.Keys);
 
-                foreach (var m in list)
+                foreach (Mobile m in list)
                 {
                     if (MysteriousPotionEffects != null && MysteriousPotionEffects.ContainsKey(m) && MysteriousPotionEffects[m] < DateTime.UtcNow)
                     {
                         MysteriousPotionEffects.Remove(m);
-
-                        if (MysteriousPotionEffects.Count == 0)
-                        {
-                            MysteriousPotionEffects = null;
-                        }
                     }
                 }
 
@@ -308,7 +304,7 @@ namespace Server.Services.TownCryer
         {
             if (from is PlayerMobile)
             {
-                var pm = from as PlayerMobile;
+                PlayerMobile pm = from as PlayerMobile;
 
                 if (pm.AccessLevel >= EMAccess)
                 {
@@ -316,11 +312,11 @@ namespace Server.Services.TownCryer
                     list.Add(new UpdateEMEntry(tc));
                 }
 
-                var system = CityLoyaltySystem.GetCitizenship(pm, false);
+                CityLoyaltySystem system = CityLoyaltySystem.GetCitizenship(pm, false);
 
                 if (IsGovernor(pm, system))
                 {
-                    list.Add(new UpdateCityEntry(tc, system.City));
+                    list.Add(new UpdateCityEntry(tc));
                 }
 
                 Guild g = pm.Guild as Guild;
@@ -351,18 +347,13 @@ namespace Server.Services.TownCryer
 
         public static bool UnderMysteriousPotionEffects(Mobile m, bool checkQuest = false)
         {
-            return 
+            return
                 MysteriousPotionEffects != null && MysteriousPotionEffects.ContainsKey(m) && MysteriousPotionEffects[m] > DateTime.UtcNow &&
-                (!checkQuest || (m is PlayerMobile && QuestHelper.HasQuest<AForcedSacraficeQuest2>((PlayerMobile)m)));
+                (!checkQuest || m is PlayerMobile && QuestHelper.HasQuest<AForcedSacraficeQuest2>((PlayerMobile)m));
         }
 
         public static void AddMysteriousPotionEffects(Mobile m)
         {
-            if (MysteriousPotionEffects == null)
-            {
-                MysteriousPotionEffects = new Dictionary<Mobile, DateTime>();
-            }
-
             MysteriousPotionEffects[m] = DateTime.UtcNow + TimeSpan.FromDays(3);
 
             CheckTimer();
@@ -377,7 +368,7 @@ namespace Server.Services.TownCryer
             if (File.Exists(PreLoadedPath))
             {
                 XmlDocument doc = new XmlDocument();
-                Utility.WriteConsoleColor(ConsoleColor.Cyan, "*** Loading Pre-Loaded Town Crier Messages...");
+                Utility.WriteLine(ConsoleColor.Cyan, "*** Loading Pre-Loaded Town Crier Messages...");
 
                 try
                 {
@@ -385,8 +376,8 @@ namespace Server.Services.TownCryer
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e);
-                    Utility.WriteConsoleColor(ConsoleColor.Cyan, "...FAILED! ***");
+                    Diagnostics.ExceptionLogging.LogException(e);
+                    Utility.WriteLine(ConsoleColor.Cyan, "...FAILED! ***");
                     return;
                 }
 
@@ -425,17 +416,18 @@ namespace Server.Services.TownCryer
                         }
                         else if (expires > DateTime.Now || expires == DateTime.MinValue)
                         {
-                            var entry = new TownCryerGreetingEntry(title, body, -1, link, linktext);
-
-                            entry.PreLoaded = true;
-                            entry.Created = created;
+                            TownCryerGreetingEntry entry = new TownCryerGreetingEntry(title, body, -1, link, linktext)
+                            {
+                                PreLoaded = true,
+                                Created = created
+                            };
 
                             if (expires > created)
                             {
                                 entry.Expires = expires;
                             }
 
-                            TownCryerSystem.AddEntry(entry);
+                            AddEntry(entry);
                             good++;
                         }
                         else
@@ -450,18 +442,18 @@ namespace Server.Services.TownCryer
 
                 if (expired > 0 || errors > 0)
                 {
-                    Utility.WriteConsoleColor(ConsoleColor.Cyan, "...Complete! Loaded {0} Pre-Loaded Messages. {1} expired messages and {2} erroneous messages not loaded! ***", good, expired, errors);
+                    Utility.WriteLine(ConsoleColor.Cyan, "...Complete! Loaded {0} Pre-Loaded Messages. {1} expired messages and {2} erroneous messages not loaded! ***", good, expired, errors);
                 }
                 else
                 {
-                    Utility.WriteConsoleColor(ConsoleColor.Cyan, "...Complete! Loaded {0} Pre-Loaded Messages. ***", good);
+                    Utility.WriteLine(ConsoleColor.Cyan, "...Complete! Loaded {0} Pre-Loaded Messages. ***", good);
                 }
             }
         }
 
         public static void ErrorToConsole(string type, int index)
         {
-            Utility.WriteConsoleColor(ConsoleColor.Red, "[TC Pre-Loaded Message]: {0} for pre-loaded Message #{1}", type, index.ToString());
+            Utility.WriteLine(ConsoleColor.Red, "[TC Pre-Loaded Message]: {0} for pre-loaded Message #{1}", type, index.ToString());
         }
 
         public static DateTime GetDateTime(string text)
@@ -472,8 +464,9 @@ namespace Server.Services.TownCryer
             {
                 datetime = DateTime.Parse(text, CultureInfo.CreateSpecificCulture("en-US"));
             }
-            catch
+            catch (Exception e)
             {
+                Diagnostics.ExceptionLogging.LogException(e);
             }
 
             return datetime;
@@ -485,16 +478,16 @@ namespace Server.Services.TownCryer
         {
             bool clear = false;
 
-            GreetingsEntries.IterateReverse(entry =>
+			ColUtility.IterateReverse(GreetingsEntries, entry =>
+            {
+                if (entry.PreLoaded)
                 {
-                    if (entry.PreLoaded)
-                    {
-                        GreetingsEntries.Remove(entry);
+                    GreetingsEntries.Remove(entry);
 
-                        if (!clear)
-                            clear = true;
-                    }
-                });
+                    if (!clear)
+                        clear = true;
+                }
+            });
 
             LoadPreloadedMessages();
 
@@ -514,30 +507,30 @@ namespace Server.Services.TownCryer
             writer.Write(GreetingsEntries.Count);
 
             writer.Write(TownCryerExempt.Count);
-            foreach (var pm in TownCryerExempt)
+            foreach (PlayerMobile pm in TownCryerExempt)
                 writer.Write(pm);
 
-            writer.Write(GreetingsEntries.Where(x => x.Saves).Count());
-            foreach (var e in GreetingsEntries.Where(x => x.Saves))
+            writer.Write(GreetingsEntries.Count(x => x.Saves));
+            foreach (TownCryerGreetingEntry e in GreetingsEntries.Where(x => x.Saves))
                 e.Serialize(writer);
 
             writer.Write(ModeratorEntries.Count);
-            foreach (var e in ModeratorEntries)
+            foreach (TownCryerModeratorEntry e in ModeratorEntries)
                 e.Serialize(writer);
 
             writer.Write(CityEntries.Count);
-            foreach (var e in CityEntries)
+            foreach (TownCryerCityEntry e in CityEntries)
                 e.Serialize(writer);
 
             writer.Write(GuildEntries.Count);
-            foreach (var e in GuildEntries)
+            foreach (TownCryerGuildEntry e in GuildEntries)
                 e.Serialize(writer);
 
             writer.Write(MysteriousPotionEffects != null ? MysteriousPotionEffects.Count : 0);
 
             if (MysteriousPotionEffects != null)
             {
-                foreach (var kvp in MysteriousPotionEffects)
+                foreach (KeyValuePair<Mobile, DateTime> kvp in MysteriousPotionEffects)
                 {
                     writer.Write(kvp.Key);
                     writer.Write(kvp.Value);
@@ -560,7 +553,7 @@ namespace Server.Services.TownCryer
 
                     for (int i = 0; i < count; i++)
                     {
-                        var pm = reader.ReadMobile() as PlayerMobile;
+                        PlayerMobile pm = reader.ReadMobile() as PlayerMobile;
 
                         if (pm != null)
                         {
@@ -571,7 +564,7 @@ namespace Server.Services.TownCryer
                     count = reader.ReadInt();
                     for (int i = 0; i < count; i++)
                     {
-                        var entry = new TownCryerGreetingEntry(reader);
+                        TownCryerGreetingEntry entry = new TownCryerGreetingEntry(reader);
 
                         if (!entry.Expired)
                         {
@@ -583,7 +576,7 @@ namespace Server.Services.TownCryer
                     count = reader.ReadInt();
                     for (int i = 0; i < count; i++)
                     {
-                        var entry = new TownCryerModeratorEntry(reader);
+                        TownCryerModeratorEntry entry = new TownCryerModeratorEntry(reader);
 
                         if (!entry.Expired)
                         {
@@ -594,7 +587,7 @@ namespace Server.Services.TownCryer
                     count = reader.ReadInt();
                     for (int i = 0; i < count; i++)
                     {
-                        var entry = new TownCryerCityEntry(reader);
+                        TownCryerCityEntry entry = new TownCryerCityEntry(reader);
 
                         if (!entry.Expired)
                         {
@@ -605,7 +598,7 @@ namespace Server.Services.TownCryer
                     count = reader.ReadInt();
                     for (int i = 0; i < count; i++)
                     {
-                        var entry = new TownCryerGuildEntry(reader);
+                        TownCryerGuildEntry entry = new TownCryerGuildEntry(reader);
 
                         if (!entry.Expired)
                         {
@@ -621,9 +614,6 @@ namespace Server.Services.TownCryer
 
                         if (m != null)
                         {
-                            if (MysteriousPotionEffects == null)
-                                MysteriousPotionEffects = new Dictionary<Mobile, DateTime>();
-
                             MysteriousPotionEffects[m] = dt;
                         }
                     }
@@ -641,7 +631,7 @@ namespace Server.Services.TownCryer
 
     public class AddGreetingEntry : ContextMenuEntry
     {
-        public TownCrier Cryer { get; set; }
+        public TownCrier Cryer { get; }
 
         public AddGreetingEntry(TownCrier cryer)
             : base(1011405, 3) // Change Greeting
@@ -661,7 +651,7 @@ namespace Server.Services.TownCryer
 
     public class UpdateEMEntry : ContextMenuEntry
     {
-        public TownCrier Cryer { get; set; }
+        public TownCrier Cryer { get; }
 
         public UpdateEMEntry(TownCrier cryer)
             : base(1158022, 3) // Update EM Town Crier
@@ -688,26 +678,24 @@ namespace Server.Services.TownCryer
 
     public class UpdateCityEntry : ContextMenuEntry
     {
-        public City City { get; set; }
-        public TownCrier Cryer { get; set; }
+        public TownCrier Cryer { get; }
 
-        public UpdateCityEntry(TownCrier cryer, City city)
+        public UpdateCityEntry(TownCrier cryer)
             : base(1158023, 3) // Update City Town Crier
         {
             Cryer = cryer;
-            City = city;
         }
 
         public override void OnClick()
         {
             if (Owner.From is PlayerMobile)
             {
-                var pm = Owner.From as PlayerMobile;
-                var system = CityLoyaltySystem.GetCitizenship(pm, false);
+                PlayerMobile pm = Owner.From as PlayerMobile;
+                CityLoyaltySystem system = CityLoyaltySystem.GetCitizenship(pm, false);
 
                 if (TownCryerSystem.IsGovernor(pm, system))
                 {
-                    if (TownCryerSystem.CityEntryCount(system.City) < TownCryerSystem.MaxPerCityGoverrnorEntries)
+                    if (TownCryerSystem.CityEntryCount(system.City) < TownCryerSystem.MaxPerCityGovernorEntries)
                     {
                         BaseGump.SendGump(new CreateCityEntryGump(pm, Cryer, system.City));
                     }
@@ -722,7 +710,7 @@ namespace Server.Services.TownCryer
 
     public class UpdateGuildEntry : ContextMenuEntry
     {
-        public TownCrier Cryer { get; set; }
+        public TownCrier Cryer { get; }
 
         public UpdateGuildEntry(Mobile from, TownCrier cryer)
             : base(1158024, 3) // Update Guild Town Crier
@@ -735,7 +723,7 @@ namespace Server.Services.TownCryer
         {
             PlayerMobile pm = Owner.From as PlayerMobile;
 
-            if(pm != null)
+            if (pm != null)
             {
                 Guild g = pm.Guild as Guild;
 
